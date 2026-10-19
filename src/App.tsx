@@ -83,7 +83,13 @@ export default function App() {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(false);
   const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
+  const [isSwitchingModel, setIsSwitchingModel] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const isRunningRef = useRef(isRunning);
+  useEffect(() => {
+    isRunningRef.current = isRunning;
+  }, [isRunning]);
 
   // Settings with Browser LocalStorage persistence
   const [panningMode, setPanningMode] = useState<PanningMode>(
@@ -185,11 +191,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isRunningRef.current) {
+      // Hot-swapping is handled imperatively by handleSwitchTrackingModel / handleSwitchWhenetBackend
+      return;
+    }
     const tracker = trackingModel === 'whenet' ? new WhenetTracker(whenetBackend) : new PoseTracker();
     trackerRef.current = tracker;
     setFrameData(null);
     setErrorMsg(null);
-    return () => { cameraOperationRef.current++; tracker.destroy(); };
+    return () => {
+      if (!isRunningRef.current) {
+        cameraOperationRef.current++;
+        tracker.destroy();
+      }
+    };
   }, [trackingModel, whenetBackend]);
 
   // Sync Audio Settings
@@ -471,6 +486,150 @@ export default function App() {
     }
   }, [cameraFacing, isRunning, isInitializing, isSwitchingCamera]);
 
+  // Switch Pose Tracking Model (Seamless Live Hot-Swap supported)
+  const handleSwitchTrackingModel = useCallback(
+    async (nextModel: 'mediapipe' | 'whenet') => {
+      if (nextModel === trackingModel || isInitializing || isSwitchingCamera || isSwitchingModel) return;
+
+      if (!isRunning) {
+        setTrackingModel(nextModel);
+        return;
+      }
+
+      const operation = ++cameraOperationRef.current;
+      setIsSwitchingModel(true);
+      setErrorMsg(null);
+
+      try {
+        if (trackerRef.current) {
+          trackerRef.current.stopCamera();
+          trackerRef.current.destroy();
+          trackerRef.current = null;
+        }
+
+        setTrackingModel(nextModel);
+
+        const newTracker = nextModel === 'whenet' ? new WhenetTracker(whenetBackend) : new PoseTracker();
+        newTracker.updateConfig({
+          trackingMode: nextModel === 'whenet' ? 'head' : trackingMode,
+          distanceMode: nextModel === 'whenet' ? 'fixed' : distanceMode,
+          mirrorMode,
+          smoothingAlpha,
+        });
+        trackerRef.current = newTracker;
+
+        await newTracker.initModel();
+        if (operation !== cameraOperationRef.current) return;
+
+        if (videoRef.current) {
+          const started = await newTracker.startCamera(videoRef.current, cameraFacing);
+          if (!started || operation !== cameraOperationRef.current) return;
+        }
+
+        if (audioRef.current) {
+          audioRef.current.setTrackingLost(true);
+        }
+      } catch (err) {
+        if (operation !== cameraOperationRef.current) return;
+        console.error('Failed to switch tracking model:', err);
+        trackerRef.current?.stopCamera();
+        audioRef.current?.stop();
+        setIsRunning(false);
+        setFrameData(null);
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorMsg(`モデルの切り替えに失敗しました: ${msg}。カメラを再起動してください。`);
+      } finally {
+        if (operation === cameraOperationRef.current) {
+          setIsSwitchingModel(false);
+        }
+      }
+    },
+    [
+      trackingModel,
+      isInitializing,
+      isSwitchingCamera,
+      isSwitchingModel,
+      isRunning,
+      whenetBackend,
+      trackingMode,
+      distanceMode,
+      mirrorMode,
+      smoothingAlpha,
+      cameraFacing,
+    ]
+  );
+
+  // Switch WHENet Execution Backend (Seamless Live Hot-Swap supported)
+  const handleSwitchWhenetBackend = useCallback(
+    async (nextBackend: BackendPreference) => {
+      if (nextBackend === whenetBackend || isInitializing || isSwitchingCamera || isSwitchingModel) return;
+
+      if (!isRunning || trackingModel !== 'whenet') {
+        setWhenetBackend(nextBackend);
+        return;
+      }
+
+      const operation = ++cameraOperationRef.current;
+      setIsSwitchingModel(true);
+      setErrorMsg(null);
+
+      try {
+        if (trackerRef.current) {
+          trackerRef.current.stopCamera();
+          trackerRef.current.destroy();
+          trackerRef.current = null;
+        }
+
+        setWhenetBackend(nextBackend);
+
+        const newTracker = new WhenetTracker(nextBackend);
+        newTracker.updateConfig({
+          trackingMode: 'head',
+          distanceMode: 'fixed',
+          mirrorMode,
+          smoothingAlpha,
+        });
+        trackerRef.current = newTracker;
+
+        await newTracker.initModel();
+        if (operation !== cameraOperationRef.current) return;
+
+        if (videoRef.current) {
+          const started = await newTracker.startCamera(videoRef.current, cameraFacing);
+          if (!started || operation !== cameraOperationRef.current) return;
+        }
+
+        if (audioRef.current) {
+          audioRef.current.setTrackingLost(true);
+        }
+      } catch (err) {
+        if (operation !== cameraOperationRef.current) return;
+        console.error('Failed to switch WHENet backend:', err);
+        trackerRef.current?.stopCamera();
+        audioRef.current?.stop();
+        setIsRunning(false);
+        setFrameData(null);
+        const msg = err instanceof Error ? err.message : String(err);
+        setErrorMsg(`WHENet実行方式の切り替えに失敗しました: ${msg}。カメラを再起動してください。`);
+      } finally {
+        if (operation === cameraOperationRef.current) {
+          setIsSwitchingModel(false);
+        }
+      }
+    },
+    [
+      whenetBackend,
+      isInitializing,
+      isSwitchingCamera,
+      isSwitchingModel,
+      isRunning,
+      trackingModel,
+      mirrorMode,
+      smoothingAlpha,
+      cameraFacing,
+    ]
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-sky-200">
       {/* Top Banner / Navigation */}
@@ -620,6 +779,10 @@ export default function App() {
           {/* Camera Feed & Skeletal Wireframe (Only shown in Camera tab on mobile, always visible on desktop) */}
           <CameraCanvas
             trackingModel={trackingModel}
+            onSelectTrackingModel={handleSwitchTrackingModel}
+            whenetBackend={whenetBackend}
+            onSelectWhenetBackend={handleSwitchWhenetBackend}
+            isSwitchingModel={isSwitchingModel}
             videoRef={videoRef}
             frameData={frameData}
             mirrorMode={mirrorMode}
@@ -766,8 +929,8 @@ export default function App() {
             <div className="flex flex-col gap-1.5">
               <label htmlFor="tracking-model" className="text-slate-400 font-medium">姿勢検出モデル</label>
               <select id="tracking-model" value={trackingModel}
-                disabled={isRunning || isInitializing || isSwitchingCamera}
-                onChange={(e) => setTrackingModel(e.target.value as 'mediapipe' | 'whenet')}
+                disabled={isInitializing || isSwitchingCamera || isSwitchingModel}
+                onChange={(e) => handleSwitchTrackingModel(e.target.value as 'mediapipe' | 'whenet')}
                 className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
                 <option value="mediapipe">MediaPipe（骨格検出）</option>
                 <option value="whenet">WHENet（頭部専用・実験）</option>
@@ -776,18 +939,18 @@ export default function App() {
                 {trackingModel === 'whenet'
                   ? '頭部を自動検出し、最大の頭を追跡します。1人でお試しください。初回はモデル等を約50 MB読み込みます。頭部の向き・固定距離2.5mに対応。'
                   : '鼻・耳・肩の骨格から向きを推定します。'}
-                モデルの切替は停止中に行えます。
+                カメラタブの切替と連動しています（稼働中でも自動でシームレスに切り替わります）。
               </span>
               {trackingModel === 'whenet' && <>
                 <label htmlFor="whenet-backend" className="text-slate-400 text-xs mt-2">WHENet の実行方式</label>
                 <select id="whenet-backend" value={whenetBackend}
-                  disabled={isRunning || isInitializing || isSwitchingCamera}
-                  onChange={e => setWhenetBackend(e.target.value as BackendPreference)}
+                  disabled={isInitializing || isSwitchingCamera || isSwitchingModel}
+                  onChange={e => handleSwitchWhenetBackend(e.target.value as BackendPreference)}
                   className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
                   <option value="auto">GPU 優先（WebGPU／使えない場合は CPU）</option>
                   <option value="wasm">CPU 固定（比較用）</option>
                 </select>
-                <span className="text-[11px] text-slate-500">停止中に切り替えられます。カメラ欄に各モデルの実行方式を表示します。</span>
+                <span className="text-[11px] text-slate-500">カメラタブの切替と連動しています。カメラ欄に各モデルの実行方式を表示します。</span>
               </>}
             </div>
 

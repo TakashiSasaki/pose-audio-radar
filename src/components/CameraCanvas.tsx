@@ -1,9 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { WhenetDiagnosticsPanel } from './WhenetDiagnosticsPanel';
 import type { PoseFrameData } from '../vision/poseTracker';
+import type { BackendPreference } from '../vision/whenetBackend';
 
 interface CameraCanvasProps {
   trackingModel?: 'mediapipe' | 'whenet';
+  onSelectTrackingModel?: (model: 'mediapipe' | 'whenet') => void;
+  whenetBackend?: BackendPreference;
+  onSelectWhenetBackend?: (backend: BackendPreference) => void;
+  isSwitchingModel?: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   frameData: PoseFrameData | null;
   mirrorMode: boolean;
@@ -18,6 +23,10 @@ interface CameraCanvasProps {
 
 export const CameraCanvas: React.FC<CameraCanvasProps> = ({
   trackingModel = 'mediapipe',
+  onSelectTrackingModel,
+  whenetBackend = 'auto',
+  onSelectWhenetBackend,
+  isSwitchingModel = false,
   videoRef,
   frameData,
   mirrorMode,
@@ -206,22 +215,72 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
 
   return (
     <div className={`relative flex flex-col bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl ${className}`}>
-      <div className="w-full flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-2.5">
+        <div className="flex items-center gap-2 min-w-0">
           <div
-            className={`w-2.5 h-2.5 rounded-full ${
+            className={`w-2.5 h-2.5 rounded-full shrink-0 ${
               frameData?.hasPose ? 'bg-emerald-500' : isCameraActive ? 'bg-amber-500' : 'bg-rose-500'
             }`}
           />
-          <span className="text-xs font-semibold text-slate-300 tracking-wider">{trackingModel === 'whenet' ? 'CAMERA / HEAD POSE' : 'CAMERA / POSE SKELETON'}</span>
+          <span className="text-xs font-semibold text-slate-300 tracking-wider truncate">
+            {trackingModel === 'whenet' ? 'CAMERA / HEAD POSE' : 'CAMERA / POSE SKELETON'}
+          </span>
+          {isSwitchingModel && (
+            <span className="flex items-center gap-1 text-[11px] text-sky-400 font-mono shrink-0">
+              <span className="w-2.5 h-2.5 border-2 border-sky-400/30 border-t-sky-400 rounded-full animate-spin" />
+              <span>切替中...</span>
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          {/* Pose Detection Model Selector (Linked to Settings Tab) */}
+          {onSelectTrackingModel && (
+            <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-700/80 rounded-lg px-2 py-1">
+              <label htmlFor="camera-model-select" className="text-[11px] text-slate-400 shrink-0 hidden sm:inline">
+                モデル:
+              </label>
+              <select
+                id="camera-model-select"
+                value={trackingModel}
+                disabled={isBusy || isSwitchingModel}
+                onChange={(e) => onSelectTrackingModel(e.target.value as 'mediapipe' | 'whenet')}
+                className="bg-transparent text-xs font-medium text-slate-200 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="姿勢検出モデルを切り替えます（設定タブと連動）"
+              >
+                <option value="mediapipe" className="bg-slate-900 text-slate-100">MediaPipe (骨格)</option>
+                <option value="whenet" className="bg-slate-900 text-slate-100">WHENet (頭部)</option>
+              </select>
+            </div>
+          )}
+
+          {/* WHENet Execution Backend Selector (GPU / CPU) */}
+          {trackingModel === 'whenet' && onSelectWhenetBackend && (
+            <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-700/80 rounded-lg px-2 py-1">
+              <label htmlFor="camera-backend-select" className="text-[11px] text-slate-400 shrink-0 hidden sm:inline">
+                方式:
+              </label>
+              <select
+                id="camera-backend-select"
+                value={whenetBackend}
+                disabled={isBusy || isSwitchingModel}
+                onChange={(e) => onSelectWhenetBackend(e.target.value as BackendPreference)}
+                className="bg-transparent text-xs font-medium text-slate-200 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="WHENetの実行方式を切り替えます（設定タブと連動）"
+              >
+                <option value="auto" className="bg-slate-900 text-slate-100">GPU優先</option>
+                <option value="wasm" className="bg-slate-900 text-slate-100">CPU固定</option>
+              </select>
+            </div>
+          )}
+
+          {/* Front / Rear Camera Toggle */}
           <button
             type="button"
             onClick={onToggleCamera}
-            disabled={isBusy || !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)}
-            className={`text-xs px-2.5 py-1 rounded border transition ${
-              isBusy || !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)
+            disabled={isBusy || isSwitchingModel || !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)}
+            className={`text-xs px-2.5 py-1 rounded-lg border transition ${
+              isBusy || isSwitchingModel || !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)
                 ? 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed opacity-60'
                 : 'bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border-slate-700 cursor-pointer'
             }`}
@@ -243,6 +302,16 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
         {/* Hidden video element used for streaming frames to Canvas & MediaPipe */}
         <video ref={videoRef} playsInline muted className="hidden" />
         <canvas ref={canvasRef} className="w-full h-full object-cover block" />
+
+        {/* Hot-swap loading overlay when switching models while camera is active */}
+        {isSwitchingModel && (
+          <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-xs flex flex-col items-center justify-center gap-2.5 z-20">
+            <div className="w-8 h-8 border-3 border-sky-400/30 border-t-sky-400 rounded-full animate-spin" />
+            <span className="text-xs font-medium text-sky-200 tracking-wide">
+              {trackingModel === 'whenet' ? 'WHENet モデルへ切り替え中...' : 'MediaPipe モデルへ切り替え中...'}
+            </span>
+          </div>
+        )}
 
         {/* Video HUD badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
