@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { WhenetDiagnosticsPanel } from './WhenetDiagnosticsPanel';
 import type { PoseFrameData } from '../vision/poseTracker';
 
 interface CameraCanvasProps {
@@ -270,6 +271,8 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
       {trackingModel === 'whenet' && (
         <p role="status" className="mt-2 text-xs text-amber-300">{inferenceStatus}</p>
       )}
+
+      {trackingModel === 'whenet' && <WhenetDiagnosticsPanel diagnostics={frameData?.diagnostics} active={isCameraActive} />}
 
       <div className="w-full mt-3 pt-3 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
         <span>{trackingModel === 'whenet' ? '紫枠: 検出した頭部 / HEAD DET: 頭部検出の信頼度' : '骨格検出: 鼻(0) · 両耳(7,8) · 両肩(11,12)'}</span>

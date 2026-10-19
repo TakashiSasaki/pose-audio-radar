@@ -4,6 +4,9 @@ import { expandHead, headToAudio, readAngles, rgbaToPlanar, selectHead } from '.
 import { WhenetTracker } from '../src/vision/whenetTracker';
 import type { WhenetRequest, WhenetResponse } from '../src/vision/whenetProtocol';
 
+const startup = { detectorMs: 10, estimatorMs: 20, totalMs: 30, runtimeVersion: 'test', executionProvider: 'wasm' as const, numThreads: 1 as const };
+const timings = { frameUploadMs: 1, headPreprocessMs: 1, headInferenceMs: 10, headPostprocessMs: 1,
+  posePreprocessMs: 1, poseInferenceMs: 20, posePostprocessMs: 1, workerOtherMs: 0 };
 const box = { x: 0.4, y: 0.4, width: 0.2, height: 0.2, score: 0.9 };
 const pose = { yaw: 0, pitch: 0, roll: 0, box };
 function near(actual: number, expected: number) { assert.ok(Math.abs(actual - expected) < 1e-6, `${actual} != ${expected}`); }
@@ -105,7 +108,7 @@ afterEach(() => {
 function tracker() { const t = new WhenetTracker(); trackers.push(t); return t; }
 async function ready() {
   const t = tracker(); const loading = t.initModel(); const w = WorkerMock.instances.at(-1)!;
-  w.emit({ type: 'ready' }); await loading;
+  w.emit({ type: 'ready', startup }); await loading;
   const video = { readyState: 2, currentTime: 0, srcObject: null, videoWidth: 640, videoHeight: 480 };
   Object.assign(t, { videoElement: video });
   return { t, w, video };
@@ -118,7 +121,7 @@ test('WHENet enforces head-only fixed distance and shares concurrent model loads
   t.updateConfig({ trackingMode: 'shoulder', distanceMode: 'dynamic', fixedDistance: 3 });
   assert.equal(t.getConfig().trackingMode, 'head'); assert.equal(t.getConfig().distanceMode, 'fixed');
   const first = t.initModel(); assert.equal(t.initModel(), first);
-  WorkerMock.instances[0].emit({ type: 'ready' }); await first;
+  WorkerMock.instances[0].emit({ type: 'ready', startup }); await first;
   assert.equal(t.getIsReady(), true); assert.equal(t.getIsLoading(), false);
 });
 
@@ -127,13 +130,13 @@ test('only one inference is in flight; no head and stale frames invalidate audio
   t.processFrame(100); await flush();
   video.currentTime++; t.processFrame(200); await flush();
   assert.equal(w.messages.filter(m => m.type === 'frame').length, 1);
-  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 100 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 100 });
   let data = t.processFrame(300); assert.equal(data.hasPose, true); assert.deepEqual(data.headBox, box);
   await flush();
-  w.emit({ type: 'result', id: frame(w).id, pose: null, elapsedMs: 50 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose: null, elapsedMs: 50 });
   assert.equal(t.processFrame(400).hasPose, false);
   video.currentTime++; t.processFrame(500); await flush();
-  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 100 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 100 });
   data = t.processFrame(1600); assert.equal(data.hasPose, false); assert.equal(data.headBox, undefined);
 });
 
@@ -143,9 +146,9 @@ test('stop or camera switch discards a late worker result before accepting new f
   t.stopCamera(); Object.assign(t, { videoElement: video });
   t.processFrame(200); await flush();
   assert.equal(w.messages.filter(m => m.type === 'frame').length, 1);
-  w.emit({ type: 'result', id: old.id, pose, elapsedMs: 100 });
+  w.emit({ type: 'result', timings, id: old.id, pose, elapsedMs: 100 });
   assert.equal(t.processFrame(300).hasPose, false); await flush();
-  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 100 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 100 });
   assert.equal(t.processFrame(400).hasPose, true);
 });
 
@@ -174,7 +177,7 @@ test('initialization failure and inference failure terminate the worker and allo
   w.emit({ type: 'error', message: 'download failed' });
   await assert.rejects(first, /download failed/); assert.equal(w.terminated, true);
   const second = t.initModel(); const next = WorkerMock.instances.at(-1)!;
-  next.emit({ type: 'ready' }); await second;
+  next.emit({ type: 'ready', startup }); await second;
   next.emit({ type: 'error', message: 'inference failed' });
   assert.equal(t.processFrame(0).errorMessage, 'inference failed'); assert.equal(next.terminated, true);
 });
@@ -190,7 +193,7 @@ test('smoothing preserves fixed distance even across a front-to-back reversal', 
   const { t, w } = await ready();
   t.updateConfig({ smoothingAlpha: 0.5 });
   t.processFrame(100); await flush();
-  w.emit({ type: 'result', id: frame(w).id, pose: { ...pose, yaw: 180 }, elapsedMs: 100 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose: { ...pose, yaw: 180 }, elapsedMs: 100 });
   const data = t.processFrame(200);
   assert.equal(data.hasPose, true); near(data.coords.distance, 2.5);
   assert.ok(Object.values(data.coords).every(Number.isFinite));
@@ -200,7 +203,7 @@ test('late events from a terminated worker cannot break its replacement', async 
   const t = tracker(); const first = t.initModel(); const old = WorkerMock.instances.at(-1)!;
   old.emit({ type: 'error', message: 'failed' }); await assert.rejects(first);
   const second = t.initModel(); const next = WorkerMock.instances.at(-1)!;
-  next.emit({ type: 'ready' }); await second;
+  next.emit({ type: 'ready', startup }); await second;
   old.emit({ type: 'error', message: 'late error' }); old.onerror?.({ message: 'late crash' });
   assert.equal(t.getIsReady(), true); assert.equal(next.terminated, false);
 });
@@ -210,7 +213,7 @@ test('a delayed result from a frozen camera is discarded without changing direct
   const { t, w } = await ready();
   t.processFrame(100); await flush();
   mock.method(performance, 'now', () => 1200);
-  w.emit({ type: 'result', id: frame(w).id, pose: { ...pose, yaw: 90 }, elapsedMs: 1100 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose: { ...pose, yaw: 90 }, elapsedMs: 1100 });
   const data = t.processFrame(1200);
   assert.equal(data.hasPose, false); near(data.coords.x, 0); near(data.coords.z, -2.5);
 });
@@ -226,7 +229,7 @@ test('a live camera accepts slow results and holds them while the next inference
     t.processFrame(now);
   }
   now = 2500;
-  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 2400 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 2400 });
   let data = t.processFrame(now);
   assert.equal(data.hasPose, true); assert.deepEqual(data.headBox, box);
   near(data.fps, 1000 / 2400); assert.equal(data.inference?.latencyMs, 2400);
@@ -236,7 +239,7 @@ test('a live camera accepts slow results and holds them while the next inference
     assert.equal(data.hasPose, true);
   }
   now = 4900;
-  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 2400 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 2400 });
   assert.equal(t.processFrame(now).hasPose, true);
   near(t.processFrame(now).fps, 1000 / 2400);
 });
@@ -245,7 +248,7 @@ test('stalled output expires even while the camera keeps producing frames', asyn
   const { t, w, video } = await ready();
   t.processFrame(100);
   mock.method(performance, 'now', () => 200);
-  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 100 });
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 100 });
   video.currentTime++;
   assert.equal(t.processFrame(300).hasPose, true);
   video.currentTime++;
@@ -261,7 +264,7 @@ for (const [phase, label] of [['capturing', '映像の取り出し・受け渡�
     t.processFrame(100);
     if (phase !== 'capturing') {
       context.mock.timers.tick(20_000);
-      w.emit({ type: 'progress', id: frame(w).id, phase });
+      w.emit({ type: 'progress', id: frame(w).id, phase, timings });
     }
     assert.equal(t.processFrame(100).inference?.phase, phase);
     context.mock.timers.tick(29_999);
@@ -271,3 +274,52 @@ for (const [phase, label] of [['capturing', '映像の取り出し・受け渡�
     assert.equal(w.terminated, true);
   });
 }
+
+test('diagnostics measure capture, model work and delivery separately and retain partial work on timeout', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const { t, w, video } = await ready();
+  let now = 100;
+  mock.method(performance, 'now', () => now);
+  mock.method(document, 'createElement', () => ({ width: 0, height: 0, getContext: () => ({
+    drawImage() { now += 5; },
+    getImageData() { now += 5; return { data: new Uint8ClampedArray(640 * 480 * 4) }; },
+  }) }) as unknown as HTMLCanvasElement);
+  t.processFrame(now);
+  now = 900; video.currentTime++; t.processFrame(now);
+  now = 1100;
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 35 });
+  const result = t.processFrame(now).diagnostics!;
+  const measured = result.samples[0];
+  assert.equal(measured.timings.captureMs, 10);
+  assert.equal(measured.timings.totalMs, 1000);
+  assert.equal(measured.timings.deliveryMs, 955);
+  assert.deepEqual(measured.sourceSize, [640, 480]);
+  assert.equal(measured.timings.poseInferenceMs, 20);
+  assert.equal(result.startup?.runtimeVersion, 'test');
+  w.emit({ type: 'progress', id: frame(w).id, phase: 'estimating-pose', timings });
+  context.mock.timers.tick(30_000);
+  const failed = t.processFrame(now).diagnostics!;
+  assert.equal(failed.failure?.phase, 'estimating-pose');
+  assert.equal(failed.failure?.partial?.workerTimings.headInferenceMs, 10);
+  assert.equal(failed.samples.length, 1);
+  t.stopCamera();
+  assert.equal(failed.samples.length, 1); // retained UI snapshot is immutable across restart
+  assert.equal(t.processFrame(now).diagnostics?.samples.length, 0);
+});
+
+test('visibility changes are retained even when no animation callback runs while hidden', async () => {
+  let onVisibility: (() => void) | undefined;
+  Object.assign(document, { addEventListener: (_type: string, listener: () => void) => { onVisibility = listener; } });
+  const { t, w, video } = await ready();
+  let now = 100;
+  mock.method(performance, 'now', () => now);
+  t.processFrame(now);
+  Object.assign(document, { visibilityState: 'hidden' }); onVisibility!();
+  Object.assign(document, { visibilityState: 'visible' }); onVisibility!();
+  now = 1000; video.currentTime++; t.processFrame(now);
+  now = 1100;
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 35 });
+  const sample = t.processFrame(now).diagnostics!.samples[0];
+  assert.equal(sample.hiddenDuringFrame, true);
+  assert.equal(sample.maxAnimationGapMs, 900);
+});

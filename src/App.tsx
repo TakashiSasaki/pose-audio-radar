@@ -369,7 +369,7 @@ export default function App() {
           trackerRef.current.stopCamera();
           audioRef.current.stop();
           setIsRunning(false);
-          setFrameData(null);
+          setFrameData(data);
           setErrorMsg(`頭部推定に失敗しました: ${data.errorMessage}`);
           return;
         }
@@ -395,8 +395,9 @@ export default function App() {
       if (audioRef.current) audioRef.current.stop();
       setIsRunning(false);
       setIsSwitchingCamera(false);
-      setFrameData(null);
+      setFrameData(previous => previous?.diagnostics ? { ...previous, hasPose: false, headBox: undefined } : null);
     } else {
+      setFrameData(null);
       // Start
       setErrorMsg(null);
       setIsInitializing(true);
