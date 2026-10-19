@@ -1,10 +1,15 @@
-import * as ort from 'onnxruntime-web/wasm';
+import * as ort from 'onnxruntime-web/webgpu';
 import { expandHead, HEAD_HEIGHT, HEAD_WIDTH, readAngles, rgbaToPlanar, selectHead } from './whenetMath';
-import type { WorkerTimings } from './whenetDiagnostics';
+import { FallbackModel, softwareAdapter, type ModelBackend, type ModelSession } from './whenetBackend';
+import type { ModelStartup, WorkerTimings } from './whenetDiagnostics';
 import type { WhenetRequest, WhenetResponse } from './whenetProtocol';
 
-let detector: ort.InferenceSession;
-let estimator: ort.InferenceSession;
+let detector: FallbackModel;
+let estimator: FallbackModel;
+let startup: ModelStartup;
+let gpuFailure: string | null = null;
+let gpuDevice: GPUDevice | null = null;
+let deviceInfo: ModelStartup['gpu'] = null;
 const frameCanvas = new OffscreenCanvas(1, 1);
 const frameCtx = frameCanvas.getContext('2d')!;
 const headCanvas = new OffscreenCanvas(HEAD_WIDTH, HEAD_HEIGHT);
@@ -25,21 +30,77 @@ async function infer(session: ort.InferenceSession, data: Float32Array, dims: nu
   }
 }
 
+async function createModel(url: string, dims: number[], provider: ModelBackend): Promise<ModelSession> {
+  // Only name WebGPU here: initialization errors must reach our explicit CPU fallback.
+  // ORT still assigns unsupported operators (e.g. NMS) to its CPU kernels.
+  const session = await ort.InferenceSession.create(url, {
+    executionProviders: provider === 'webgpu' ? [{ name: 'webgpu', device: gpuDevice! }] : ['wasm'],
+  });
+  try {
+    if (provider === 'webgpu') {
+      // Shader compilation and first-run failures happen after session creation on some GPUs.
+      const probe = await infer(session, new Float32Array(dims.reduce((a, b) => a * b, 1)), dims);
+      if (gpuFailure || !probe.every(Number.isFinite)) throw new Error(gpuFailure ?? 'GPU の試行結果が不正です');
+    }
+    return { run: (data, shape) => infer(session, data, shape), release: () => session.release() };
+  } catch (error) {
+    try { await session.release(); } catch { /* Preserve the original initialization error. */ }
+    throw error;
+  }
+}
+
+function backendChanged() {
+  startup = { ...startup, backends: { detector: detector.status, estimator: estimator.status } };
+  send({ type: 'backend', startup });
+}
+
 self.onmessage = async (event: MessageEvent<WhenetRequest>) => {
   const request = event.data;
   try {
     if (request.type === 'init') {
-      // Pages has no COOP/COEP headers. Run one WASM thread inside our own worker.
+      // WASM also supplies the CPU kernels used by WebGPU for unsupported operators.
       ort.env.wasm.numThreads = 1;
       ort.env.wasm.wasmPaths = `${request.baseUrl}whenet/ort/`;
+      let useGpu = false;
+      let unavailableReason: string | null = null;
+      let gpuInfo: ModelStartup['gpu'] = null;
       const initStart = performance.now();
-      detector = await ort.InferenceSession.create(`${request.baseUrl}whenet/head.onnx`, { executionProviders: ['wasm'] });
+      if (request.backend !== 'wasm') {
+        try {
+          const gpu = navigator.gpu;
+          if (!gpu) throw new Error('このブラウザでは WebGPU API を利用できません');
+          const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+          if (!adapter) throw new Error('利用可能な GPU アダプターがありません');
+          const info = adapter.info ?? {};
+          gpuInfo = { vendor: info.vendor ?? '', architecture: info.architecture ?? '', description: info.description ?? '' };
+          if (softwareAdapter(info, (adapter as GPUAdapter & { isFallbackAdapter?: boolean }).isFallbackAdapter)) throw new Error('ソフトウェア GPU のため CPU を使用します');
+          // Pass an explicit device so ORT uses the high-performance adapter selected above.
+          // Request only supported features/limits, including on GPUs without shader-f16.
+          const limits = ['maxComputeWorkgroupStorageSize', 'maxComputeWorkgroupsPerDimension',
+            'maxStorageBufferBindingSize', 'maxBufferSize', 'maxComputeInvocationsPerWorkgroup',
+            'maxComputeWorkgroupSizeX', 'maxComputeWorkgroupSizeY', 'maxComputeWorkgroupSizeZ'] as const;
+          gpuDevice = await adapter.requestDevice({
+            requiredLimits: Object.fromEntries(limits.map(key => [key, adapter.limits[key]])),
+            requiredFeatures: (['shader-f16', 'subgroups'] as const).filter(feature => adapter.features.has(feature)),
+          });
+          const actual = gpuDevice.adapterInfo;
+          if (actual) deviceInfo = { vendor: actual.vendor ?? '', architecture: actual.architecture ?? '', description: actual.description ?? '' };
+          gpuDevice.lost.then(info => { gpuFailure = `GPU デバイスを利用できなくなりました: ${info.message}`; });
+          gpuDevice.addEventListener('uncapturederror', event => { gpuFailure = `WebGPU エラー: ${event.error.message}`; });
+          ort.env.webgpu.adapter = adapter;
+          useGpu = true;
+        } catch (error) { unavailableReason = error instanceof Error ? error.message : String(error); }
+      }
+      detector = new FallbackModel(provider => createModel(`${request.baseUrl}whenet/head.onnx`, [1, 3, HEAD_HEIGHT, HEAD_WIDTH], provider), () => gpuFailure, backendChanged);
+      estimator = new FallbackModel(provider => createModel(`${request.baseUrl}whenet/whenet.onnx`, [1, 3, 224, 224], provider), () => gpuFailure, backendChanged);
+      await detector.init(useGpu, unavailableReason);
       const detectorDone = performance.now();
-      estimator = await ort.InferenceSession.create(`${request.baseUrl}whenet/whenet.onnx`, { executionProviders: ['wasm'] });
+      await estimator.init(useGpu && !gpuFailure, gpuFailure ?? unavailableReason);
       const initDone = performance.now();
-      send({ type: 'ready', startup: { detectorMs: detectorDone - initStart, estimatorMs: initDone - detectorDone,
+      startup = { detectorMs: detectorDone - initStart, estimatorMs: initDone - detectorDone,
         totalMs: initDone - initStart, runtimeVersion: ort.env.versions.web ?? ort.env.versions.common,
-        executionProvider: 'wasm', numThreads: 1 } });
+        preference: request.backend, backends: { detector: detector.status, estimator: estimator.status }, gpu: deviceInfo ?? gpuInfo, numThreads: 1 };
+      send({ type: 'ready', startup });
       return;
     }
     const start = performance.now();
@@ -58,7 +119,7 @@ self.onmessage = async (event: MessageEvent<WhenetRequest>) => {
     headCtx.drawImage(frameCanvas, 0, 0, HEAD_WIDTH, HEAD_HEIGHT);
     const headInput = rgbaToPlanar(headCtx.getImageData(0, 0, HEAD_WIDTH, HEAD_HEIGHT).data, true);
     measure('headPreprocessMs');
-    const boxes = await infer(detector, headInput, [1, 3, HEAD_HEIGHT, HEAD_WIDTH]);
+    const boxes = await detector.run(headInput, [1, 3, HEAD_HEIGHT, HEAD_WIDTH]);
     measure('headInferenceMs');
     const box = selectHead(boxes);
     measure('headPostprocessMs');
@@ -70,7 +131,7 @@ self.onmessage = async (event: MessageEvent<WhenetRequest>) => {
       poseCtx.drawImage(frameCanvas, crop.x * width, crop.y * height, crop.width * width, crop.height * height, 0, 0, 224, 224);
       const poseInput = rgbaToPlanar(poseCtx.getImageData(0, 0, 224, 224).data, false);
       measure('posePreprocessMs');
-      const angles = await infer(estimator, poseInput, [1, 3, 224, 224]);
+      const angles = await estimator.run(poseInput, [1, 3, 224, 224]);
       measure('poseInferenceMs');
       pose = { ...readAngles(angles), box };
       measure('posePostprocessMs');

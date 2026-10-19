@@ -50,9 +50,9 @@ try {
 } finally {
   await rm(temp, { recursive: true, force: true });
 }
-const ortDist = dirname(fileURLToPath(import.meta.resolve('onnxruntime-web/wasm')));
+const ortDist = dirname(fileURLToPath(import.meta.resolve('onnxruntime-web/webgpu')));
 await mkdir(join(root, 'ort'), { recursive: true });
-for (const file of ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm']) {
+for (const file of ['ort-wasm-simd-threaded.asyncify.mjs', 'ort-wasm-simd-threaded.asyncify.wasm']) {
   await copyFile(join(ortDist, file), join(root, 'ort', file));
 }
 console.log('WHENet, head detector, and matching ONNX Runtime WASM assets are ready.');

@@ -11,7 +11,7 @@ function sample(id: number, total = 1000, detected = true): FrameSample {
     maxAnimationGapMs: 16, sourceSize: [640, 480], inputSize: [640, 480],
     timings: completeTimings(10, total, workerTotal, detected ? worker : { ...worker, posePreprocessMs: null, poseInferenceMs: null, posePostprocessMs: null }) };
 }
-function benchmark(): Benchmark { return { run: 1, afterId: 1, target: 2, status: 'running', warmup: null, samples: [] }; }
+function benchmark(): Benchmark { return { run: 1, startup: null, afterId: 1, target: 2, status: 'running', warmup: null, samples: [] }; }
 
 test('frame breakdown conserves elapsed time and attributes delayed delivery outside model execution', () => {
   const result = completeTimings(10, 3000, workerTotal, worker);

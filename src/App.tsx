@@ -32,6 +32,7 @@ import {
   type DistanceMode,
   type PoseFrameData,
 } from './vision/poseTracker';
+import type { BackendPreference } from './vision/whenetBackend';
 import { WhenetTracker } from './vision/whenetTracker';
 import { RadarCanvas } from './components/RadarCanvas';
 import { CameraCanvas } from './components/CameraCanvas';
@@ -40,6 +41,7 @@ const SETTINGS_STORAGE_KEY = 'spatial_radar_controls_settings_v1';
 
 interface StoredSettings {
   trackingModel?: 'mediapipe' | 'whenet';
+  whenetBackend?: BackendPreference;
   panningMode?: PanningMode;
   soundType?: SoundType;
   trackingMode?: TrackingMode;
@@ -93,6 +95,7 @@ export default function App() {
   const [trackingModel, setTrackingModel] = useState<'mediapipe' | 'whenet'>(initialSettings.trackingModel === 'whenet' ? 'whenet' : 'mediapipe');
   const [trackingMode, setTrackingMode] = useState<TrackingMode>(initialSettings.trackingMode ?? 'head');
   const [distanceMode, setDistanceMode] = useState<DistanceMode>(initialSettings.distanceMode ?? 'fixed');
+  const [whenetBackend, setWhenetBackend] = useState<BackendPreference>(initialSettings.whenetBackend === 'wasm' ? 'wasm' : 'auto');
   const effectiveTrackingMode = trackingModel === 'whenet' ? 'head' : trackingMode;
   const effectiveDistanceMode = trackingModel === 'whenet' ? 'fixed' : distanceMode;
   const [mirrorMode, setMirrorMode] = useState<boolean>(initialSettings.mirrorMode ?? false);
@@ -133,6 +136,7 @@ export default function App() {
       const dataToSave: StoredSettings = {
         panningMode,
         trackingModel,
+        whenetBackend,
         soundType,
         trackingMode,
         distanceMode,
@@ -153,6 +157,7 @@ export default function App() {
     }
   }, [
     trackingModel,
+    whenetBackend,
     panningMode,
     soundType,
     trackingMode,
@@ -180,12 +185,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const tracker = trackingModel === 'whenet' ? new WhenetTracker() : new PoseTracker();
+    const tracker = trackingModel === 'whenet' ? new WhenetTracker(whenetBackend) : new PoseTracker();
     trackerRef.current = tracker;
     setFrameData(null);
     setErrorMsg(null);
     return () => { cameraOperationRef.current++; tracker.destroy(); };
-  }, [trackingModel]);
+  }, [trackingModel, whenetBackend]);
 
   // Sync Audio Settings
   useEffect(() => {
@@ -355,7 +360,7 @@ export default function App() {
         smoothingAlpha,
       });
     }
-  }, [trackingModel, effectiveTrackingMode, effectiveDistanceMode, mirrorMode, smoothingAlpha]);
+  }, [trackingModel, whenetBackend, effectiveTrackingMode, effectiveDistanceMode, mirrorMode, smoothingAlpha]);
 
   // Main Processing Loop
   useEffect(() => {
@@ -769,10 +774,21 @@ export default function App() {
               </select>
               <span className="text-[11px] text-slate-500">
                 {trackingModel === 'whenet'
-                  ? '頭部を自動検出し、最大の頭を追跡します。1人でお試しください。初回はモデル等を約35 MB読み込みます。頭部の向き・固定距離2.5mに対応。'
+                  ? '頭部を自動検出し、最大の頭を追跡します。1人でお試しください。初回はモデル等を約50 MB読み込みます。頭部の向き・固定距離2.5mに対応。'
                   : '鼻・耳・肩の骨格から向きを推定します。'}
                 モデルの切替は停止中に行えます。
               </span>
+              {trackingModel === 'whenet' && <>
+                <label htmlFor="whenet-backend" className="text-slate-400 text-xs mt-2">WHENet の実行方式</label>
+                <select id="whenet-backend" value={whenetBackend}
+                  disabled={isRunning || isInitializing || isSwitchingCamera}
+                  onChange={e => setWhenetBackend(e.target.value as BackendPreference)}
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
+                  <option value="auto">GPU 優先（WebGPU／使えない場合は CPU）</option>
+                  <option value="wasm">CPU 固定（比較用）</option>
+                </select>
+                <span className="text-[11px] text-slate-500">停止中に切り替えられます。カメラ欄に各モデルの実行方式を表示します。</span>
+              </>}
             </div>
 
             {/* 3. Reference Mode */}
