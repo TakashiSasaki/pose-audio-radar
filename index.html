@@ -4,11 +4,60 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>3D Pose Audio Radar - 360° HRTF Spatial Audio</title>
-    <meta name="description" content="360-degree spatial audio radar using MediaPipe Pose 3D skeletal tracking and Web Audio API HRTF to perceive camera position purely by sound." />
-    <meta property="og:title" content="3D Pose Audio Radar - 360° HRTF Spatial Audio" />
-    <meta property="og:description" content="360-degree spatial audio radar using MediaPipe Pose 3D skeletal tracking and Web Audio API HRTF to perceive camera position purely by sound." />
+    <meta name="description" content="360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーション。" />
+    <meta name="theme-color" content="#020617" />
+
+    <!-- OpenGraph (Facebook, Slack, Discord, LinkedIn) -->
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://pose-audio-radar.moukaeritai.work/" />
+    <meta property="og:title" content="3D Pose Audio Radar - 360° HRTF Spatial Audio" />
+    <meta property="og:description" content="360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーション。" />
+    <meta property="og:image" content="https://pose-audio-radar.moukaeritai.work/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="3D Pose Audio Radar プレビューカード" />
+    <meta property="og:site_name" content="3D Pose Audio Radar" />
+
+    <!-- Twitter / X Cards -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@TakashiSasaki" />
+    <meta name="twitter:creator" content="@TakashiSasaki" />
+    <meta name="twitter:title" content="3D Pose Audio Radar - 360° HRTF Spatial Audio" />
+    <meta name="twitter:description" content="360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーション。" />
+    <meta name="twitter:image" content="https://pose-audio-radar.moukaeritai.work/og-image.png" />
+
+    <!-- PWA & Mobile Web App -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AudioRadar" />
+
+    <!-- Schema.org JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "3D Pose Audio Radar",
+      "url": "https://pose-audio-radar.moukaeritai.work/",
+      "description": "360-degree spatial audio radar using MediaPipe Pose 3D skeletal tracking and WHENet head pose estimation with Web Audio API HRTF to perceive camera position purely by sound.",
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "All",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "Takashi Sasaki",
+        "url": "https://x.com/TakashiSasaki"
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="ogBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617" />
+      <stop offset="50%" stop-color="#0b1329" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <radialGradient id="ogGlow" cx="28%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#ogBg)" />
+  <rect width="1196" height="626" x="2" y="2" fill="none" stroke="#1e293b" stroke-width="2" />
+  <circle cx="340" cy="315" r="320" fill="url(#ogGlow)" />
+
+  <!-- Radar Circles on Left -->
+  <g transform="translate(300, 315)">
+    <circle cx="0" cy="0" r="220" fill="none" stroke="#1e293b" stroke-width="2.5" />
+    <circle cx="0" cy="0" r="160" fill="none" stroke="#0284c7" stroke-width="2" stroke-dasharray="8 6" opacity="0.6" />
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#0ea5e9" stroke-width="2" opacity="0.4" />
+    <circle cx="0" cy="0" r="40" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.8" />
+    <line x1="0" y1="-230" x2="0" y2="230" stroke="#1e293b" stroke-width="2" stroke-dasharray="6 6" />
+    <line x1="-230" y1="0" x2="230" y2="0" stroke="#1e293b" stroke-width="2" stroke-dasharray="6 6" />
+
+    <!-- Sweep -->
+    <path d="M 0 0 L 140 -170 A 220 220 0 0 0 0 -220 Z" fill="#38bdf8" opacity="0.25" />
+
+    <!-- Sound waves -->
+    <path d="M -80 -40 A 60 60 0 0 0 -80 40" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" />
+    <path d="M -110 -60 A 90 90 0 0 0 -110 60" fill="none" stroke="#0284c7" stroke-width="3" stroke-linecap="round" opacity="0.7" />
+    <path d="M 80 -40 A 60 60 0 0 1 80 40" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round" />
+    <path d="M 110 -60 A 90 90 0 0 1 110 60" fill="none" stroke="#0284c7" stroke-width="3" stroke-linecap="round" opacity="0.7" />
+
+    <!-- Headphone & Head -->
+    <path d="M -40 -10 C -40 -60, 40 -60, 40 -10" fill="none" stroke="#f8fafc" stroke-width="7" stroke-linecap="round" />
+    <circle cx="0" cy="0" r="30" fill="#0f172a" stroke="#38bdf8" stroke-width="3.5" />
+    <polygon points="0,-15 -8,2 0,-1 8,2" fill="#38bdf8" />
+    <rect x="-48" y="-15" width="14" height="34" rx="7" fill="url(#accentGrad)" />
+    <rect x="34" y="-15" width="14" height="34" rx="7" fill="url(#accentGrad)" />
+
+    <!-- Target blip -->
+    <circle cx="120" cy="-120" r="11" fill="#38bdf8" />
+    <circle cx="120" cy="-120" r="20" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.6" />
+  </g>
+
+  <!-- Typography & Information on Right -->
+  <g transform="translate(600, 140)">
+    <!-- Badge -->
+    <rect x="0" y="0" width="230" height="32" rx="16" fill="#0369a1" fill-opacity="0.25" stroke="#0284c7" stroke-width="1.5" />
+    <text x="115" y="21" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700" fill="#38bdf8" text-anchor="middle" letter-spacing="1">
+      SPATIAL AUDIO RADAR
+    </text>
+
+    <!-- Main Title -->
+    <text x="0" y="90" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="800" fill="url(#textGrad)" letter-spacing="-1">
+      3D Pose Audio Radar
+    </text>
+
+    <!-- Subtitle -->
+    <text x="0" y="140" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="500" fill="#94a3b8">
+      音だけでカメラ位置を知覚する 360° 立体音響空間レーダー
+    </text>
+
+    <!-- Description -->
+    <text x="0" y="190" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="#64748b">
+      MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF
+    </text>
+
+    <!-- Feature Tags -->
+    <g transform="translate(0, 240)">
+      <!-- Tag 1 -->
+      <rect x="0" y="0" width="165" height="38" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1.5" />
+      <text x="82" y="24" font-family="monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="middle">
+        3D HRTF Panning
+      </text>
+
+      <!-- Tag 2 -->
+      <rect x="177" y="0" width="170" height="38" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1.5" />
+      <text x="262" y="24" font-family="monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="middle">
+        MediaPipe + WHENet
+      </text>
+
+      <!-- Tag 3 -->
+      <rect x="359" y="0" width="150" height="38" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1.5" />
+      <text x="434" y="24" font-family="monospace" font-size="13" fill="#38bdf8" font-weight="600" text-anchor="middle">
+        PWA Installable
+      </text>
+    </g>
+
+    <!-- Bottom URL & Author Credit -->
+    <g transform="translate(0, 340)">
+      <text x="0" y="20" font-family="monospace" font-size="16" fill="#0284c7" font-weight="700">
+        pose-audio-radar.moukaeritai.work
+      </text>
+      <text x="400" y="20" font-family="system-ui, -apple-system, sans-serif" font-size="15" fill="#64748b">
+        by @TakashiSasaki
+      </text>
+    </g>
+  </g>
+</svg>

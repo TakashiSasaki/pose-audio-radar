@@ -36,6 +36,7 @@ import type { BackendPreference } from './vision/whenetBackend';
 import { WhenetTracker } from './vision/whenetTracker';
 import { RadarCanvas } from './components/RadarCanvas';
 import { CameraCanvas } from './components/CameraCanvas';
+import { PWAInstallButton } from './components/PWAInstallButton';
 
 const SETTINGS_STORAGE_KEY = 'spatial_radar_controls_settings_v1';
 
@@ -652,6 +653,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <PWAInstallButton />
             <button
               onClick={handleToggleRunning}
               disabled={isInitializing}
@@ -1317,16 +1319,22 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-        © 2026{' '}
-        <a
-          href="https://x.com/TakashiSasaki"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-slate-400 hover:text-sky-400 transition underline underline-offset-4 decoration-slate-700 hover:decoration-sky-400 font-medium"
-        >
-          @TakashiSasaki
-        </a>
+      <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 px-4 text-center text-xs text-slate-500 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+        <span>
+          © 2026{' '}
+          <a
+            href="https://x.com/TakashiSasaki"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-400 hover:text-sky-400 transition underline underline-offset-4 decoration-slate-700 hover:decoration-sky-400 font-medium"
+          >
+            @TakashiSasaki
+          </a>
+        </span>
+        <span className="text-slate-700">•</span>
+        <span className="text-[11px] font-mono text-slate-500/80 tracking-wide">
+          v{__APP_VERSION__}
+        </span>
       </footer>
     </div>
   );
