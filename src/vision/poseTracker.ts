@@ -10,6 +10,7 @@ export type DistanceMode = 'fixed' | 'dynamic';
 
 export interface PoseFrameData {
   hasPose: boolean;
+  diagnostics?: import('./whenetDiagnostics').WhenetDiagnostics;
   headBox?: import('./whenetMath').HeadBox;
   errorMessage?: string;
   inference?: {
