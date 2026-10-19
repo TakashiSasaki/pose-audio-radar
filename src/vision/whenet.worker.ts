@@ -4,6 +4,8 @@ import type { WhenetRequest, WhenetResponse } from './whenetProtocol';
 
 let detector: ort.InferenceSession;
 let estimator: ort.InferenceSession;
+const frameCanvas = new OffscreenCanvas(1, 1);
+const frameCtx = frameCanvas.getContext('2d')!;
 const headCanvas = new OffscreenCanvas(HEAD_WIDTH, HEAD_HEIGHT);
 const poseCanvas = new OffscreenCanvas(224, 224);
 const headCtx = headCanvas.getContext('2d', { willReadFrequently: true })!;
@@ -35,21 +37,25 @@ self.onmessage = async (event: MessageEvent<WhenetRequest>) => {
       return;
     }
     const start = performance.now();
-    const { bitmap } = request;
-    headCtx.drawImage(bitmap, 0, 0, HEAD_WIDTH, HEAD_HEIGHT);
+    const { pixels, width, height } = request;
+    // CPU-backed pixels avoid transferring hardware-decoded video textures between threads.
+    frameCanvas.width = width;
+    frameCanvas.height = height;
+    frameCtx.putImageData(new ImageData(pixels, width, height), 0, 0);
+    send({ type: 'progress', id: request.id, phase: 'detecting-head' });
+    headCtx.drawImage(frameCanvas, 0, 0, HEAD_WIDTH, HEAD_HEIGHT);
     const boxes = await infer(detector, rgbaToPlanar(headCtx.getImageData(0, 0, HEAD_WIDTH, HEAD_HEIGHT).data, true), [1, 3, HEAD_HEIGHT, HEAD_WIDTH]);
     const box = selectHead(boxes);
     let pose = null;
     if (box) {
       const crop = expandHead(box);
-      poseCtx.drawImage(bitmap, crop.x * bitmap.width, crop.y * bitmap.height, crop.width * bitmap.width, crop.height * bitmap.height, 0, 0, 224, 224);
+      send({ type: 'progress', id: request.id, phase: 'estimating-pose' });
+      poseCtx.drawImage(frameCanvas, crop.x * width, crop.y * height, crop.width * width, crop.height * height, 0, 0, 224, 224);
       const angles = await infer(estimator, rgbaToPlanar(poseCtx.getImageData(0, 0, 224, 224).data, false), [1, 3, 224, 224]);
       pose = { ...readAngles(angles), box };
     }
     send({ type: 'result', id: request.id, pose, elapsedMs: performance.now() - start });
   } catch (error) {
     send({ type: 'error', message: error instanceof Error ? error.message : String(error) });
-  } finally {
-    if (request.type === 'frame') request.bitmap.close();
   }
 };

@@ -524,7 +524,7 @@ export default function App() {
           <div className="p-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-xl text-xs sm:text-sm flex items-start gap-3">
             <Info className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
             <div>
-              <div className="font-semibold text-rose-200">起動エラー</div>
+              <div className="font-semibold text-rose-200">処理を停止しました</div>
               <p className="mt-0.5">{errorMsg}</p>
             </div>
           </div>

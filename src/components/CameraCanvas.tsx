@@ -29,6 +29,18 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
   className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const inference = frameData?.inference;
+  const inferenceStatus = !isCameraActive ? '停止中' : frameData?.hasPose
+    ? (inference?.latencyMs && inference.latencyMs > 1000 ? '推定に時間がかかっています。速い追従には MediaPipe をお試しください' : '頭部追跡中')
+    : ({
+      'waiting-frame': 'カメラの新しいフレームを待機中',
+      capturing: '映像を取り出して転送中',
+      'detecting-head': '頭部を検出中',
+      'estimating-pose': '頭部の角度を推定中',
+      tracking: '頭部追跡中',
+      'no-head': '頭部未検出：頭全体が映る位置でお試しください',
+      stale: '映像または推論結果の更新を待機中',
+    }[inference?.phase ?? 'waiting-frame']);
 
   useEffect(() => {
     let animId: number;
@@ -234,8 +246,13 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
         {/* Video HUD badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-1 pointer-events-none">
           <div className="bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
-            FPS: {frameData?.fps ?? 0}
+            FPS: {trackingModel === 'whenet' ? (frameData?.fps ?? 0).toFixed(1) : frameData?.fps ?? 0}
           </div>
+          {trackingModel === 'whenet' && inference?.latencyMs != null && (
+            <div className="bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
+              推論時間: {(inference.latencyMs / 1000).toFixed(2)} 秒
+            </div>
+          )}
           {frameData?.hasPose && (
             <div className="bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-[11px] font-mono text-emerald-400 border border-slate-800">
               {trackingModel === 'whenet' ? 'HEAD DET' : 'CONF'}: {(frameData.confidence * 100).toFixed(0)}%
@@ -249,6 +266,10 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
           </div>
         )}
       </div>
+
+      {trackingModel === 'whenet' && (
+        <p role="status" className="mt-2 text-xs text-amber-300">{inferenceStatus}</p>
+      )}
 
       <div className="w-full mt-3 pt-3 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
         <span>{trackingModel === 'whenet' ? '紫枠: 検出した頭部 / HEAD DET: 頭部検出の信頼度' : '骨格検出: 鼻(0) · 両耳(7,8) · 両肩(11,12)'}</span>
