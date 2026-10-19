@@ -73,20 +73,26 @@ class WorkerMock {
   onmessage: ((event: { data: WhenetResponse }) => void) | null = null;
   onerror: ((event: { message: string }) => void) | null = null;
   messages: WhenetRequest[] = [];
+  transfers: Transferable[][] = [];
   terminated = false;
   constructor() { WorkerMock.instances.push(this); }
-  postMessage(message: WhenetRequest) { this.messages.push(message); }
+  postMessage(message: WhenetRequest, transfers: Transferable[] = []) { this.messages.push(message); this.transfers.push(transfers); }
   terminate() { this.terminated = true; }
   emit(data: WhenetResponse) { this.onmessage?.({ data }); }
 }
-const originals = ['Worker', 'document', 'createImageBitmap'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
+const originals = ['Worker', 'document'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const);
 const trackers: WhenetTracker[] = [];
 beforeEach(() => {
   mock.method(performance, 'now', () => 0);
   WorkerMock.instances = [];
   Object.defineProperty(globalThis, 'Worker', { configurable: true, value: WorkerMock });
-  Object.defineProperty(globalThis, 'document', { configurable: true, value: { baseURI: 'https://example.test/app/' } });
-  Object.defineProperty(globalThis, 'createImageBitmap', { configurable: true, writable: true, value: async () => ({ close() {} }) });
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: {
+    baseURI: 'https://example.test/app/',
+    createElement: () => ({ width: 0, height: 0, getContext: () => ({
+      drawImage() {},
+      getImageData: (_x: number, _y: number, width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+    }) }),
+  } });
 });
 afterEach(() => {
   mock.restoreAll();
@@ -100,7 +106,7 @@ function tracker() { const t = new WhenetTracker(); trackers.push(t); return t; 
 async function ready() {
   const t = tracker(); const loading = t.initModel(); const w = WorkerMock.instances.at(-1)!;
   w.emit({ type: 'ready' }); await loading;
-  const video = { readyState: 2, currentTime: 0, srcObject: null };
+  const video = { readyState: 2, currentTime: 0, srcObject: null, videoWidth: 640, videoHeight: 480 };
   Object.assign(t, { videoElement: video });
   return { t, w, video };
 }
@@ -143,12 +149,24 @@ test('stop or camera switch discards a late worker result before accepting new f
   assert.equal(t.processFrame(400).hasPose, true);
 });
 
-test('a bitmap captured after stop is closed without sending it to the worker', async () => {
+test('camera capture caps resolution and transfers CPU pixels without an ImageBitmap', async () => {
+  const { t, w, video } = await ready();
+  video.videoWidth = 1920; video.videoHeight = 1080;
+  t.processFrame(100);
+  const request = frame(w);
+  assert.equal(request.width, 640); assert.equal(request.height, 360);
+  assert.ok(request.pixels instanceof Uint8ClampedArray);
+  assert.equal(request.pixels.length, 640 * 360 * 4);
+  assert.deepEqual(w.transfers.at(-1), [request.pixels.buffer]);
+  assert.equal('bitmap' in request, false);
+});
+
+test('a failed pixel capture reports its stage and releases the worker', async () => {
   const { t, w } = await ready();
-  let resolve!: (value: unknown) => void; let closed = false;
-  Object.assign(globalThis, { createImageBitmap: () => new Promise(r => { resolve = r; }) });
-  t.processFrame(100); await flush(); t.stopCamera(); resolve({ close() { closed = true; } }); await flush();
-  assert.equal(closed, true); assert.equal(w.messages.some(m => m.type === 'frame'), false);
+  mock.method(document, 'createElement', () => { throw new Error('readback failed'); });
+  const result = t.processFrame(100);
+  assert.match(result.errorMessage!, /映像の取り出し・受け渡し.*readback failed/);
+  assert.equal(w.terminated, true);
 });
 
 test('initialization failure and inference failure terminate the worker and allow a clean retry', async () => {
@@ -188,7 +206,7 @@ test('late events from a terminated worker cannot break its replacement', async 
 });
 
 
-test('a result already older than one second is discarded without changing direction', async () => {
+test('a delayed result from a frozen camera is discarded without changing direction', async () => {
   const { t, w } = await ready();
   t.processFrame(100); await flush();
   mock.method(performance, 'now', () => 1200);
@@ -196,3 +214,60 @@ test('a result already older than one second is discarded without changing direc
   const data = t.processFrame(1200);
   assert.equal(data.hasPose, false); near(data.coords.x, 0); near(data.coords.z, -2.5);
 });
+
+
+test('a live camera accepts slow results and holds them while the next inference runs', async () => {
+  const { t, w, video } = await ready();
+  let now = 100;
+  mock.method(performance, 'now', () => now);
+  t.processFrame(now);
+  for (now = 600; now <= 2100; now += 500) {
+    video.currentTime++;
+    t.processFrame(now);
+  }
+  now = 2500;
+  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 2400 });
+  let data = t.processFrame(now);
+  assert.equal(data.hasPose, true); assert.deepEqual(data.headBox, box);
+  near(data.fps, 1000 / 2400); assert.equal(data.inference?.latencyMs, 2400);
+  for (now = 3000; now <= 4500; now += 500) {
+    video.currentTime++;
+    data = t.processFrame(now);
+    assert.equal(data.hasPose, true);
+  }
+  now = 4900;
+  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 2400 });
+  assert.equal(t.processFrame(now).hasPose, true);
+  near(t.processFrame(now).fps, 1000 / 2400);
+});
+
+test('stalled output expires even while the camera keeps producing frames', async () => {
+  const { t, w, video } = await ready();
+  t.processFrame(100);
+  mock.method(performance, 'now', () => 200);
+  w.emit({ type: 'result', id: frame(w).id, pose, elapsedMs: 100 });
+  video.currentTime++;
+  assert.equal(t.processFrame(300).hasPose, true);
+  video.currentTime++;
+  const stale = t.processFrame(1300);
+  assert.equal(stale.hasPose, false); assert.equal(stale.headBox, undefined);
+  assert.equal(stale.inference?.phase, 'stale');
+});
+
+for (const [phase, label] of [['capturing', '映像の取り出し・受け渡し'], ['detecting-head', '頭部検出'], ['estimating-pose', 'WHENet の角度推定']] as const) {
+  test(`timeout identifies ${phase} and terminates the worker`, async (context) => {
+    context.mock.timers.enable({ apis: ['setTimeout'] });
+    const { t, w } = await ready();
+    t.processFrame(100);
+    if (phase !== 'capturing') {
+      context.mock.timers.tick(20_000);
+      w.emit({ type: 'progress', id: frame(w).id, phase });
+    }
+    assert.equal(t.processFrame(100).inference?.phase, phase);
+    context.mock.timers.tick(29_999);
+    assert.equal(w.terminated, false);
+    context.mock.timers.tick(1);
+    assert.match(t.processFrame(100).errorMessage!, new RegExp(label));
+    assert.equal(w.terminated, true);
+  });
+}

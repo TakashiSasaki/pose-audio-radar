@@ -12,6 +12,10 @@ export interface PoseFrameData {
   hasPose: boolean;
   headBox?: import('./whenetMath').HeadBox;
   errorMessage?: string;
+  inference?: {
+    phase: import('./whenetProtocol').InferencePhase | 'waiting-frame' | 'tracking' | 'no-head' | 'stale';
+    latencyMs: number | null;
+  };
   landmarks: { x: number; y: number; z: number; visibility?: number }[] | null;
   worldLandmarks: { x: number; y: number; z: number; visibility?: number }[] | null;
   coords: AudioCoordinates;
