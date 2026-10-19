@@ -20,6 +20,7 @@ import {
 
 import {
   SpatialAudioEngine,
+  initializeAudioOutput,
   type SoundType,
   type PanningMode,
   type ChannelTestMode,
@@ -72,10 +73,12 @@ export default function App() {
   const audioRef = useRef<SpatialAudioEngine | null>(null);
   const trackerRef = useRef<PoseTracker | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraOperationRef = useRef(0);
 
   // States
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(false);
+  const [isSwitchingCamera, setIsSwitchingCamera] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Settings with Browser LocalStorage persistence
@@ -97,6 +100,7 @@ export default function App() {
     initialSettings.sweepVolumeProfile ?? 'swell'
   );
   const [sweepDurationMs, setSweepDurationMs] = useState<number>(initialSettings.sweepDurationMs ?? 150);
+  const isSweepActive = isSweepEnabled && soundType === 'pulsed_noise';
 
   // Camera Device States
   const [hasFrontCamera, setHasFrontCamera] = useState<boolean>(true);
@@ -164,6 +168,7 @@ export default function App() {
     trackerRef.current = new PoseTracker();
 
     return () => {
+      cameraOperationRef.current++;
       if (trackerRef.current) trackerRef.current.destroy();
       if (audioRef.current) audioRef.current.destroy();
     };
@@ -178,9 +183,9 @@ export default function App() {
 
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.setSweepEnabled(isSweepEnabled);
+      audioRef.current.setSweepEnabled(isSweepActive);
     }
-  }, [isSweepEnabled]);
+  }, [isSweepActive]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -287,9 +292,9 @@ export default function App() {
 
   // Select Audio Output Device (Headset vs Headphones)
   const handleSelectOutputDevice = async (deviceId: string) => {
-    setSelectedOutputDeviceId(deviceId);
     if (audioRef.current) {
       const success = await audioRef.current.setAudioOutputDevice(deviceId);
+      setSelectedOutputDeviceId(audioRef.current.getCurrentSinkId());
       if (success) {
         const dev = audioOutputDevices.find((d) => d.deviceId === deviceId);
         setDeviceStatusMsg(`出力先を変更: ${dev?.label || (deviceId === 'default' ? '既定のデバイス' : deviceId)}`);
@@ -300,12 +305,25 @@ export default function App() {
     }
   };
 
+  // Restore the saved output before any playback, including isolated test tones.
+  const initializeAudio = useCallback(async () => {
+    const audio = audioRef.current;
+    if (!audio) throw new Error('音声システムが準備できていません');
+    const success = await initializeAudioOutput(audio, selectedOutputDeviceId);
+    if (!success) {
+      setSelectedOutputDeviceId(audio.getCurrentSinkId());
+      setDeviceStatusMsg('保存した出力先を使用できないため、現在の出力先に戻しました');
+    }
+    return audio;
+  }, [selectedOutputDeviceId]);
+
   // Play Test Chirp Tone (Immediate left/right check)
   const handlePlayTestTone = async (channel: 'left' | 'right') => {
     setIsTestingChannel(channel);
     try {
       if (audioRef.current) {
-        await audioRef.current.playTestTone(channel);
+        const audio = await initializeAudio();
+        await audio.playTestTone(channel);
       }
     } catch (err) {
       console.error('Failed to play test tone:', err);
@@ -348,11 +366,13 @@ export default function App() {
 
   // Toggle Start / Stop
   const handleToggleRunning = useCallback(async () => {
+    const operation = ++cameraOperationRef.current;
     if (isRunning) {
       // Stop
       if (trackerRef.current) trackerRef.current.stopCamera();
       if (audioRef.current) audioRef.current.stop();
       setIsRunning(false);
+      setIsSwitchingCamera(false);
       setFrameData(null);
     } else {
       // Start
@@ -364,41 +384,63 @@ export default function App() {
         }
 
         // 1. Audio init (requires user gesture)
-        await audioRef.current.init();
+        await initializeAudio();
+        if (operation !== cameraOperationRef.current) return;
 
         // 2. MediaPipe model init
         if (!trackerRef.current.getIsReady()) {
           await trackerRef.current.initModel();
         }
+        if (operation !== cameraOperationRef.current) return;
 
         // 3. Start Camera
-        await trackerRef.current.startCamera(videoRef.current, cameraFacing);
+        const started = await trackerRef.current.startCamera(videoRef.current, cameraFacing);
+        if (!started || operation !== cameraOperationRef.current) return;
 
         // 4. Start sound synthesis
         audioRef.current.start();
         setIsRunning(true);
       } catch (err: unknown) {
+        if (operation !== cameraOperationRef.current) return;
+        trackerRef.current?.stopCamera();
+        audioRef.current?.stop();
+        setIsRunning(false);
+        setFrameData(null);
         const message = err instanceof Error ? err.message : String(err);
         console.error('Initialization error:', err);
         setErrorMsg(`起動に失敗しました: ${message}。カメラとマイク・音声の許可をご確認ください。`);
       } finally {
-        setIsInitializing(false);
+        if (operation === cameraOperationRef.current) setIsInitializing(false);
       }
     }
-  }, [isRunning, cameraFacing]);
+  }, [isRunning, cameraFacing, initializeAudio]);
 
   // Switch Camera
   const handleToggleCameraFacing = useCallback(async () => {
+    if (isInitializing || isSwitchingCamera) return;
     const nextFacing = cameraFacing === 'user' ? 'environment' : 'user';
-    setCameraFacing(nextFacing);
     if (isRunning && trackerRef.current && videoRef.current) {
+      const operation = ++cameraOperationRef.current;
+      setIsSwitchingCamera(true);
+      setErrorMsg(null);
       try {
-        await trackerRef.current.startCamera(videoRef.current, nextFacing);
+        const started = await trackerRef.current.startCamera(videoRef.current, nextFacing);
+        if (started && operation === cameraOperationRef.current) setCameraFacing(nextFacing);
       } catch (err) {
+        if (operation !== cameraOperationRef.current) return;
+        trackerRef.current.stopCamera();
+        audioRef.current?.stop();
+        setIsRunning(false);
+        setFrameData(null);
+        setErrorMsg('カメラの切り替えに失敗しました。カメラを再起動してください。');
         console.error('Failed to switch camera:', err);
+      } finally {
+        if (operation === cameraOperationRef.current) setIsSwitchingCamera(false);
       }
+    } else {
+      setCameraFacing(nextFacing);
     }
-  }, [cameraFacing, isRunning]);
+  }, [cameraFacing, isRunning, isInitializing, isSwitchingCamera]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-sky-200">
@@ -542,7 +584,7 @@ export default function App() {
               onTogglePanningMode={() => setPanningMode(panningMode === 'HRTF' ? 'equalpower' : 'HRTF')}
               shoulderAngleDeg={frameData?.shoulderAngleDeg}
               headAngleDeg={frameData?.headAngleDeg}
-              isSweepEnabled={isSweepEnabled}
+              isSweepEnabled={isSweepActive}
             />
           </div>
 
@@ -555,6 +597,7 @@ export default function App() {
             onToggleCamera={handleToggleCameraFacing}
             facingMode={cameraFacing}
             canToggleCamera={canToggleCamera}
+            isBusy={isInitializing || isSwitchingCamera}
             hasFrontCamera={hasFrontCamera}
             className={mobileTab === 'camera' ? 'flex' : 'hidden lg:flex'}
           />
@@ -603,20 +646,21 @@ export default function App() {
             <div className="flex flex-col gap-1.5">
               <label className="text-slate-400 font-medium">180°対角からの動的音響スウィープ</label>
               <button
+                disabled={soundType !== 'pulsed_noise'}
                 onClick={() => setIsSweepEnabled(!isSweepEnabled)}
-                className="w-full py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg font-medium transition text-left px-3 flex items-center justify-between"
+                className="w-full py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg font-medium transition text-left px-3 flex items-center justify-between disabled:opacity-50"
               >
-                <span>{isSweepEnabled ? '動的スウィープ提示：有効' : '固定位置提示（スウィープなし）'}</span>
+                <span>{isSweepActive ? '動的スウィープ提示：有効' : '固定位置提示（スウィープなし）'}</span>
                 <span
                   className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${
-                    isSweepEnabled ? 'bg-sky-500/20 text-sky-400' : 'bg-slate-800 text-slate-500'
+                    isSweepActive ? 'bg-sky-500/20 text-sky-400' : 'bg-slate-800 text-slate-500'
                   }`}
                 >
-                  {isSweepEnabled ? 'ON' : 'OFF'}
+                  {isSweepActive ? 'ON' : 'OFF'}
                 </span>
               </button>
               <span className="text-[11px] text-slate-500">
-                発音ごとに180度対角（例: 8時）から目的方向（例: 2時）へ速度変化（遅い➔普通➔遅い）を伴って音がスウィープし、方向を極めて明確に認識できます
+                周期変調ホワイトノイズで利用できます。時計・足音は短い音のため固定位置で提示します。
               </span>
             </div>
 
@@ -624,7 +668,7 @@ export default function App() {
             <div className="flex flex-col gap-1.5">
               <label className="text-slate-400 font-medium">スウィープ音量変化パターン</label>
               <select
-                disabled={!isSweepEnabled}
+                disabled={!isSweepActive}
                 value={sweepVolumeProfile}
                 onChange={(e) => setSweepVolumeProfile(e.target.value as SweepVolumeProfile)}
                 className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-sky-500 disabled:opacity-50"
@@ -655,7 +699,7 @@ export default function App() {
                 min="0"
                 max="600"
                 step="10"
-                disabled={!isSweepEnabled}
+                disabled={!isSweepActive}
                 value={sweepDurationMs}
                 onChange={(e) => setSweepDurationMs(Number(e.target.value))}
                 className="w-full accent-sky-500 cursor-pointer disabled:opacity-50"
@@ -672,7 +716,7 @@ export default function App() {
                   <button
                     key={item.val}
                     type="button"
-                    disabled={!isSweepEnabled}
+                    disabled={!isSweepActive}
                     onClick={() => setSweepDurationMs(item.val)}
                     className={`px-1.5 py-0.5 text-[10px] rounded font-mono border transition ${
                       sweepDurationMs === item.val
