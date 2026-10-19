@@ -23,17 +23,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.4.3'
+          cache: 'npm'
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: npm ci
 
       - name: Check types
         run: npm run lint
@@ -45,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: public/whenet
-          key: whenet-${{ hashFiles('scripts/prepare-whenet.mjs', 'bun.lock') }}
+          key: whenet-${{ hashFiles('scripts/prepare-whenet.mjs', 'package-lock.json') }}
 
       - name: Build
         run: npm run build

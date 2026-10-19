@@ -2,10 +2,10 @@
 
 ## ローカル開発
 
-Node.js 24 と Bun 1.4.3 を使用します。
+Node.js 24 と npm を使用します。
 
 ```sh
-bun install --frozen-lockfile
+npm install
 npm run dev
 ```
 
