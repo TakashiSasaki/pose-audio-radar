@@ -9,7 +9,11 @@ bun install --frozen-lockfile
 npm run dev
 ```
 
-`npm run lint` で型検査、`npm run build` で本番用の `dist/` を生成します。
+`npm test` で回帰テスト、`npm run lint` で型検査、`npm run build` で本番用の `dist/` を生成します。プルリクエストでもこれらを自動実行します。
+
+開発サーバー起動前とビルド前に、インストール済みの MediaPipe パッケージから WASM・ローダーを `public/mediapipe/wasm/` にコピーします。これにより JavaScript と WASM のバージョンを揃え、アプリと同じドメインから配信します。生成ファイルは Git 管理対象外です。モデル本体は起動時に `storage.googleapis.com` から取得します。
+
+スウィープは周期変調ホワイトノイズで利用できます。短い時計音・足音は固定位置で提示します。必要なランドマークの可視性が低い場合は方向の更新を止めます。頭部モードは鼻・両耳、肩モードは両肩、複合モードは両方を必要とします。肩幅連動距離では両肩も必要です。背面などで顔が隠れる場合は肩モードを選択してください。
 
 ## GitHub Pages
 

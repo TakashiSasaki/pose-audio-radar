@@ -9,6 +9,7 @@ interface CameraCanvasProps {
   onToggleCamera: () => void;
   facingMode: 'user' | 'environment';
   canToggleCamera?: boolean;
+  isBusy?: boolean;
   hasFrontCamera?: boolean;
   className?: string;
 }
@@ -21,6 +22,7 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
   onToggleCamera,
   facingMode,
   canToggleCamera = true,
+  isBusy = false,
   hasFrontCamera = true,
   className = '',
 }) => {
@@ -195,20 +197,20 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
           <button
             type="button"
             onClick={onToggleCamera}
-            disabled={!canToggleCamera || (facingMode === 'user' && !hasFrontCamera)}
+            disabled={isBusy || !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)}
             className={`text-xs px-2.5 py-1 rounded border transition ${
-              !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)
+              isBusy || !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)
                 ? 'bg-slate-900/60 text-slate-500 border-slate-800 cursor-not-allowed opacity-60'
                 : 'bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border-slate-700 cursor-pointer'
             }`}
             title={
-              !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)
+              isBusy ? 'カメラを準備中です' : !canToggleCamera || (facingMode === 'user' && !hasFrontCamera)
                 ? 'インカメラが無いか、切替可能なカメラが存在しません'
                 : 'カメラの向き（前面・背面）を切り替えます'
             }
           >
-            {facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'}
-            {(!canToggleCamera || (facingMode === 'user' && !hasFrontCamera)) && (
+            {isBusy ? '準備中...' : facingMode === 'user' ? 'インカメラ' : 'アウトカメラ'}
+            {!isBusy && (!canToggleCamera || (facingMode === 'user' && !hasFrontCamera)) && (
               <span className="text-[10px] text-slate-500 ml-1">（固定）</span>
             )}
           </button>

@@ -34,6 +34,7 @@ export class SpatialAudioEngine {
   private soundType: SoundType = 'clock';
   private panningMode: PanningMode = 'HRTF';
   private bpm: number = 120;
+  private volume: number = 0.7;
   private timerId: number | null = null;
   private clockStep: number = 0; // alternates tick / tock
 
@@ -72,7 +73,7 @@ export class SpatialAudioEngine {
 
     // Master gain
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
 
     // High shelf / low pass for subtle distance damping
     this.filterNode = this.ctx.createBiquadFilter();
@@ -93,18 +94,17 @@ export class SpatialAudioEngine {
     this.updatePosition({ x: 0, y: 0, z: -2.5, distance: 2.5, azimuthDeg: 0, elevationDeg: 0 });
 
     // Connect graph:
-    // Panner -> Filter -> MasterGain -> Splitter
+    // Panner -> Filter -> Splitter
     // Splitter ch0 (Left) -> leftGain -> Merger ch0
     // Splitter ch1 (Right) -> rightGain -> Merger ch1
-    // Merger -> Destination
+    // Merger -> MasterGain -> Destination (including isolated test tones)
     this.channelSplitter = this.ctx.createChannelSplitter(2);
     this.channelMerger = this.ctx.createChannelMerger(2);
     this.leftGain = this.ctx.createGain();
     this.rightGain = this.ctx.createGain();
 
     this.panner.connect(this.filterNode);
-    this.filterNode.connect(this.masterGain);
-    this.masterGain.connect(this.channelSplitter);
+    this.filterNode.connect(this.channelSplitter);
 
     this.channelSplitter.connect(this.leftGain, 0);
     this.channelSplitter.connect(this.rightGain, 1);
@@ -112,7 +112,8 @@ export class SpatialAudioEngine {
     this.leftGain.connect(this.channelMerger, 0, 0);
     this.rightGain.connect(this.channelMerger, 0, 1);
 
-    this.channelMerger.connect(this.ctx.destination);
+    this.channelMerger.connect(this.masterGain);
+    this.masterGain.connect(this.ctx.destination);
 
     this.updateChannelGains();
 
@@ -203,10 +204,11 @@ export class SpatialAudioEngine {
 
   public setSweepEnabled(enabled: boolean): void {
     this.isSweepEnabled = enabled;
+    if (!this.getSweepEnabled()) this.cancelSweep();
   }
 
   public getSweepEnabled(): boolean {
-    return this.isSweepEnabled;
+    return this.isSweepEnabled && this.soundType === 'pulsed_noise';
   }
 
   public setSweepVolumeProfile(profile: SweepVolumeProfile): void {
@@ -247,6 +249,7 @@ export class SpatialAudioEngine {
 
   public setSoundType(type: SoundType): void {
     this.soundType = type;
+    if (!this.getSweepEnabled()) this.cancelSweep();
   }
 
   public getSoundType(): SoundType {
@@ -262,9 +265,9 @@ export class SpatialAudioEngine {
   }
 
   public setVolume(volume: number): void {
+    this.volume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0;
     if (this.masterGain && this.ctx) {
-      const clamped = Math.max(0, Math.min(1, volume));
-      this.masterGain.gain.setTargetAtTime(clamped, this.ctx.currentTime, 0.05);
+      this.masterGain.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
     }
   }
 
@@ -284,7 +287,7 @@ export class SpatialAudioEngine {
     // If dynamic 180-degree sweep is active and currently sweeping,
     // let the AudioParam ramp control the panner position uninterrupted.
     const now = this.ctx.currentTime;
-    if (this.isSweepEnabled && now < this.sweepEndTime) {
+    if (this.getSweepEnabled() && now < this.sweepEndTime) {
       return;
     }
 
@@ -310,6 +313,17 @@ export class SpatialAudioEngine {
   public stop(): void {
     this.isRunning = false;
     this.stopSequencer();
+    this.cancelSweep();
+  }
+
+  private cancelSweep(): void {
+    this.sweepEndTime = 0;
+    if (!this.panner || !this.ctx || !('positionX' in this.panner)) return;
+    const now = this.ctx.currentTime;
+    this.panner.positionX.cancelScheduledValues(now);
+    this.panner.positionY.cancelScheduledValues(now);
+    this.panner.positionZ.cancelScheduledValues(now);
+    this.updatePosition(this.currentTargetCoords);
   }
 
   public getIsRunning(): boolean {
@@ -344,7 +358,7 @@ export class SpatialAudioEngine {
     const now = this.ctx.currentTime;
 
     // 180-degree directional audio sweep execution
-    if (this.isSweepEnabled && 'positionX' in this.panner) {
+    if (this.getSweepEnabled() && 'positionX' in this.panner) {
       // Duration of directional sweep (e.g. custom duration in ms or auto linked to BPM)
       const sweepDuration = this.getActualSweepDurationSec();
 
@@ -440,12 +454,24 @@ export class SpatialAudioEngine {
   public async setAudioOutputDevice(deviceId: string): Promise<boolean> {
     await this.init();
     if (!this.ctx) return false;
-    this.currentSinkId = deviceId;
+
+    // Once routed through an audio element, keep switching that active route.
+    if (this.sinkAudioElement) {
+      try {
+        await this.sinkAudioElement.setSinkId(deviceId);
+        this.currentSinkId = deviceId;
+        return true;
+      } catch (error) {
+        console.warn('Audio output switch failed:', error);
+        return false;
+      }
+    }
 
     // 1. Primary: AudioContext.prototype.setSinkId (Chrome 110+, Edge)
     if ('setSinkId' in this.ctx && typeof (this.ctx as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId === 'function') {
       try {
         await (this.ctx as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(deviceId);
+        this.currentSinkId = deviceId;
         return true;
       } catch (err) {
         console.warn('AudioContext.setSinkId failed, attempting HTMLAudioElement fallback:', err);
@@ -453,23 +479,25 @@ export class SpatialAudioEngine {
     }
 
     // 2. Secondary fallback: Route Web Audio to MediaStreamDestination -> HTMLAudioElement.setSinkId
-    if (typeof Audio !== 'undefined' && 'setSinkId' in Audio.prototype && this.channelMerger) {
+    if (typeof Audio !== 'undefined' && 'setSinkId' in Audio.prototype && this.masterGain) {
+      const destination = this.ctx.createMediaStreamDestination();
+      const element = new Audio();
       try {
-        if (!this.sinkAudioElement || !this.streamDestination) {
-          this.streamDestination = this.ctx.createMediaStreamDestination();
-          this.channelMerger.connect(this.streamDestination);
-          this.sinkAudioElement = new Audio();
-          this.sinkAudioElement.srcObject = this.streamDestination.stream;
-          try {
-            this.channelMerger.disconnect(this.ctx.destination);
-          } catch {
-            // Already disconnected or not supported
-          }
-          await this.sinkAudioElement.play().catch(() => {});
-        }
-        await (this.sinkAudioElement as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(deviceId);
+        element.srcObject = destination.stream;
+        await element.setSinkId(deviceId);
+        this.masterGain.connect(destination);
+        await element.play();
+        this.masterGain.disconnect(this.ctx.destination);
+        this.streamDestination = destination;
+        this.sinkAudioElement = element;
+        this.currentSinkId = deviceId;
         return true;
       } catch (fallbackErr) {
+        element.pause();
+        element.srcObject = null;
+        try {
+          this.masterGain.disconnect(destination);
+        } catch { /* Connection may not have been made yet. */ }
         console.error('HTMLAudioElement.setSinkId failed:', fallbackErr);
       }
     }
@@ -606,7 +634,6 @@ export class SpatialAudioEngine {
 
     const noiseSource = this.ctx.createBufferSource();
     noiseSource.buffer = this.noiseBuffer;
-    const noiseOffset = Math.random() * 1.5;
 
     // Subtle bandpass shaping to accentuate HRTF pinna filtering (800Hz - 8kHz)
     const filter = this.ctx.createBiquadFilter();
@@ -615,21 +642,21 @@ export class SpatialAudioEngine {
     filter.Q.setValueAtTime(0.7, now);
 
     const gain = this.ctx.createGain();
-    const duration = this.isSweepEnabled
+    const duration = this.getSweepEnabled()
       ? this.getActualSweepDurationSec()
       : 0.08; // 80ms pulse or custom duration during 180-degree directional sweep
 
-    if (this.isSweepEnabled && this.sweepVolumeProfile === 'swell') {
+    if (this.getSweepEnabled() && this.sweepVolumeProfile === 'swell') {
       // 小 → 大 → 小（スウェル / 山型: 始点＝小、中間＝大、終点＝小）
       gain.gain.setValueAtTime(baseGain * 0.05, now);
       gain.gain.linearRampToValueAtTime(baseGain, now + duration * 0.5);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    } else if (this.isSweepEnabled && this.sweepVolumeProfile === 'crescendo') {
+    } else if (this.getSweepEnabled() && this.sweepVolumeProfile === 'crescendo') {
       // クレッシェンド（徐々に小 → 大: 始点＝小、終点＝大）
       gain.gain.setValueAtTime(baseGain * 0.05, now);
       gain.gain.exponentialRampToValueAtTime(baseGain, now + duration * 0.88);
       gain.gain.linearRampToValueAtTime(0.0001, now + duration);
-    } else if (this.isSweepEnabled && this.sweepVolumeProfile === 'decrescendo') {
+    } else if (this.getSweepEnabled() && this.sweepVolumeProfile === 'decrescendo') {
       // デクレッシェンド（徐々に大 → 小: 始点＝大、終点＝小）
       gain.gain.setValueAtTime(baseGain, now);
       gain.gain.exponentialRampToValueAtTime(baseGain * 0.02, now + duration * 0.92);
@@ -645,6 +672,7 @@ export class SpatialAudioEngine {
     filter.connect(gain);
     gain.connect(this.panner);
 
+    const noiseOffset = Math.random() * Math.max(0, this.noiseBuffer.duration - duration - 0.01);
     noiseSource.start(now, noiseOffset, duration + 0.01);
   }
 
@@ -661,4 +689,10 @@ export class SpatialAudioEngine {
       this.ctx.close();
     }
   }
+}
+
+/** Apply a saved output before either tracking audio or test tones can play. */
+export async function initializeAudioOutput(audio: SpatialAudioEngine, preferredSinkId: string): Promise<boolean> {
+  await audio.init();
+  return audio.getCurrentSinkId() === preferredSinkId || audio.setAudioOutputDevice(preferredSinkId);
 }

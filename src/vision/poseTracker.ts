@@ -37,6 +37,8 @@ export class PoseTracker {
   private isModelReady: boolean = false;
   private videoElement: HTMLVideoElement | null = null;
   private mediaStream: MediaStream | null = null;
+  private cameraRequestId = 0;
+  private destroyed = false;
 
   // Smoothing state (Cartesian coordinates)
   private smoothedX: number = 0;
@@ -65,7 +67,7 @@ export class PoseTracker {
 
     try {
       const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        `${import.meta.env.BASE_URL}mediapipe/wasm`
       );
 
       // Attempt with GPU delegate, fallback to CPU if GPU is unavailable
@@ -98,6 +100,11 @@ export class PoseTracker {
         });
       }
 
+      if (this.destroyed) {
+        this.poseLandmarker.close();
+        this.poseLandmarker = null;
+        throw new DOMException('Tracker was destroyed', 'AbortError');
+      }
       this.isModelReady = true;
     } finally {
       this.isModelLoading = false;
@@ -120,10 +127,10 @@ export class PoseTracker {
     return this.config;
   }
 
-  public async startCamera(video: HTMLVideoElement, facing: 'user' | 'environment' = 'user'): Promise<void> {
+  public async startCamera(video: HTMLVideoElement, facing: 'user' | 'environment' = 'user'): Promise<boolean> {
     this.stopCamera();
-    this.videoElement = video;
-    this.config.cameraFacing = facing;
+    if (this.destroyed) return false;
+    const requestId = this.cameraRequestId;
 
     const constraints: MediaStreamConstraints = {
       video: {
@@ -135,19 +142,41 @@ export class PoseTracker {
       audio: false,
     };
 
-    this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-    this.videoElement.srcObject = this.mediaStream;
-    this.videoElement.setAttribute('playsinline', 'true');
-    await this.videoElement.play();
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (requestId !== this.cameraRequestId) {
+        stream.getTracks().forEach((track) => track.stop());
+        return false;
+      }
+      this.mediaStream = stream;
+      this.videoElement = video;
+      video.srcObject = stream;
+      video.setAttribute('playsinline', 'true');
+      await video.play();
+      if (requestId !== this.cameraRequestId) {
+        stream.getTracks().forEach((track) => track.stop());
+        return false;
+      }
+      this.config.cameraFacing = facing;
+      return true;
+    } catch (error) {
+      stream?.getTracks().forEach((track) => track.stop());
+      if (requestId !== this.cameraRequestId) return false;
+      this.stopCamera();
+      throw error;
+    }
   }
 
   public stopCamera(): void {
+    this.cameraRequestId++;
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach((track) => track.stop());
       this.mediaStream = null;
     }
     if (this.videoElement) {
       this.videoElement.srcObject = null;
+      this.videoElement = null;
     }
   }
 
@@ -210,6 +239,23 @@ export class PoseTracker {
     this.consecutiveLostFrames = 0;
     const lm2d = detection.landmarks[0];
     const lm3d = detection.worldLandmarks[0];
+    const headIndices = [0, 7, 8];
+    const shoulderIndices = [11, 12];
+    if (![...headIndices, ...shoulderIndices].every((index) => lm2d[index] && lm3d[index])) {
+      return fallbackResult;
+    }
+    const isReliable = (indices: number[]) => indices.every((index) =>
+      [lm2d[index], lm3d[index]].every((point) =>
+        [point.x, point.y, point.z].every(Number.isFinite) && (point.visibility ?? 0) >= 0.5
+      )
+    );
+    const hasReliableHead = isReliable(headIndices);
+    const hasReliableShoulders = isReliable(shoulderIndices);
+    const needsHead = this.config.trackingMode !== 'shoulder';
+    const needsShoulders = this.config.trackingMode !== 'head' || this.config.distanceMode === 'dynamic';
+    if ((needsHead && !hasReliableHead) || (needsShoulders && !hasReliableShoulders)) {
+      return fallbackResult;
+    }
 
     // Landmark references
     // 0: nose, 7: left_ear, 8: right_ear, 11: left_shoulder, 12: right_shoulder
@@ -225,49 +271,31 @@ export class PoseTracker {
     const leftEar3D = lm3d[7];
     const rightEar3D = lm3d[8];
 
-    // Check visibility confidence
-    const confidence =
-      ((leftShoulder2D.visibility ?? 0.8) +
-        (rightShoulder2D.visibility ?? 0.8) +
-        (nose.visibility ?? 0.8) +
-        (leftEar.visibility ?? 0.8) +
-        (rightEar.visibility ?? 0.8)) /
-      5;
+    // Report the weakest required landmark rather than hiding it in an average.
+    const requiredIndices = [...(needsHead ? headIndices : []), ...(needsShoulders ? shoulderIndices : [])];
+    const confidence = Math.min(...requiredIndices.flatMap((index) => [lm2d[index].visibility ?? 0, lm3d[index].visibility ?? 0]));
 
     // 1. Calculate Shoulder 360-degree rotation angle psi_shoulder
-    // 2D image difference:
-    // Left shoulder 11, Right shoulder 12
-    // Facing camera: left shoulder is image-right (larger x), right shoulder is image-left (smaller x) => deltaX_2d > 0
-    // Back to camera: left shoulder is image-left (smaller x), right shoulder is image-right (larger x) => deltaX_2d < 0
-    const deltaX_2d = leftShoulder2D.x - rightShoulder2D.x;
+    // Both components must be in the same world-coordinate units (meters).
+    const deltaX_3d = leftShoulder3D.x - rightShoulder3D.x;
 
     // 3D worldLandmarks depth difference:
     // R_z - L_z
     const deltaZ_3d = rightShoulder3D.z - leftShoulder3D.z;
 
-    // In 3D worldLandmarks, X axis points right, Z axis points depth away/towards camera.
-    // When facing camera: deltaX_2d is positive, deltaZ_3d is near 0 => Angle 0
-    // When turning to user's left (facing viewer's left): deltaZ_3d increases, deltaX_2d goes towards 0
-    // When facing away from camera: deltaX_2d is negative, deltaZ_3d is near 0 => Angle 180 / -180
-    // Using atan2(deltaZ, deltaX):
-    let shoulderAngleRad = Math.atan2(deltaZ_3d, deltaX_2d);
+    const shoulderAngleRad = hasReliableShoulders ? Math.atan2(deltaZ_3d, deltaX_3d) : 0;
 
     // 2. Calculate Head 360-degree rotation angle psi_head
     // Ear midpoint
     const earMidX = (leftEar.x + rightEar.x) / 2;
     const earMidY = (leftEar.y + rightEar.y) / 2;
-    const earDeltaX_2d = leftEar.x - rightEar.x;
 
     const earMid3D_z = (leftEar3D.z + rightEar3D.z) / 2;
     const headDeltaZ_3d = earMid3D_z - nose3D.z; // Nose is in front of ears when facing camera => positive
     const headDeltaX_3d = nose3D.x - (leftEar3D.x + rightEar3D.x) / 2;
 
     // Head orientation angle
-    let headAngleRad = Math.atan2(headDeltaX_3d, headDeltaZ_3d);
-    // If ears are inverted in 2D (facing backwards), adjust head angle
-    if (earDeltaX_2d < 0 && headDeltaZ_3d < 0) {
-      headAngleRad = Math.atan2(headDeltaX_3d, headDeltaZ_3d);
-    }
+    const headAngleRad = hasReliableHead ? Math.atan2(headDeltaX_3d, headDeltaZ_3d) : 0;
 
     // 3. Choose base angle based on trackingMode
     let baseAngleRad = 0;
@@ -287,7 +315,7 @@ export class PoseTracker {
     // When user's head moves horizontally in camera frame, camera is offset relative to user
     // FOVx is roughly 60 degrees (1.047 radians)
     const FOV_X = (60 * Math.PI) / 180;
-    const headCenterX = (nose.x + earMidX) / 2;
+    const headCenterX = hasReliableHead ? (nose.x + earMidX) / 2 : (leftShoulder2D.x + rightShoulder2D.x) / 2;
     // Normalized screen center is 0.5. If user is at left (headCenterX < 0.5), camera is to user's right
     const offsetAngleRad = (0.5 - headCenterX) * FOV_X;
 
@@ -305,12 +333,12 @@ export class PoseTracker {
     // 5. Elevation / Pitch angle phi
     // 2D vertical position (nose/ear center Y)
     const FOV_Y = (45 * Math.PI) / 180;
-    const headCenterY = (nose.y + earMidY) / 2;
+    const headCenterY = hasReliableHead ? (nose.y + earMidY) / 2 : (leftShoulder2D.y + rightShoulder2D.y) / 2;
     // When head is low in frame (headCenterY > 0.5), camera is positioned higher than user => positive elevation
     const cameraElevationFromY = (0.5 - headCenterY) * FOV_Y * -1;
 
     // Face tilt: nose vs ear midpoint Y (looking up vs down)
-    const tiltPitch = (earMidY - nose.y) * 0.5;
+    const tiltPitch = hasReliableHead ? (earMidY - nose.y) * 0.5 : 0;
 
     let totalElevationRad = cameraElevationFromY + tiltPitch;
     // Clamp elevation between -60° and +60°
@@ -411,6 +439,8 @@ export class PoseTracker {
   }
 
   public destroy(): void {
+    this.destroyed = true;
+    this.isModelReady = false;
     this.stopCamera();
     if (this.poseLandmarker) {
       this.poseLandmarker.close();
