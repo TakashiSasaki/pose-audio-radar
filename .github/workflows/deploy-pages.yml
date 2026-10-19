@@ -41,6 +41,12 @@ jobs:
       - name: Run regression tests
         run: npm test
 
+      - name: Cache verified WHENet models
+        uses: actions/cache@v4
+        with:
+          path: public/whenet
+          key: whenet-${{ hashFiles('scripts/prepare-whenet.mjs', 'bun.lock') }}
+
       - name: Build
         run: npm run build
 

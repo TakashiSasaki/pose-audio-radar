@@ -10,6 +10,8 @@ export type DistanceMode = 'fixed' | 'dynamic';
 
 export interface PoseFrameData {
   hasPose: boolean;
+  headBox?: import('./whenetMath').HeadBox;
+  errorMessage?: string;
   landmarks: { x: number; y: number; z: number; visibility?: number }[] | null;
   worldLandmarks: { x: number; y: number; z: number; visibility?: number }[] | null;
   coords: AudioCoordinates;
@@ -35,7 +37,7 @@ export class PoseTracker {
   private poseLandmarker: PoseLandmarker | null = null;
   private isModelLoading: boolean = false;
   private isModelReady: boolean = false;
-  private videoElement: HTMLVideoElement | null = null;
+  protected videoElement: HTMLVideoElement | null = null;
   private mediaStream: MediaStream | null = null;
   private cameraRequestId = 0;
   private destroyed = false;

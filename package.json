@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/copy-vision-assets.mjs",
+    "predev": "node scripts/copy-vision-assets.mjs && node --use-env-proxy scripts/prepare-whenet.mjs",
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "prebuild": "node scripts/copy-vision-assets.mjs",
+    "prebuild": "node scripts/copy-vision-assets.mjs && node --use-env-proxy scripts/prepare-whenet.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -22,6 +22,7 @@
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "onnxruntime-web": "1.30.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0"
