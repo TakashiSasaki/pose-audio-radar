@@ -249,6 +249,11 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
           <div className="bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
             FPS: {trackingModel === 'whenet' ? (frameData?.fps ?? 0).toFixed(1) : frameData?.fps ?? 0}
           </div>
+          {trackingModel === 'whenet' && frameData?.diagnostics?.startup && (
+            <div className="bg-slate-950/80 px-2 py-0.5 rounded text-[11px] font-mono text-sky-300 border border-slate-800">
+              検出 {frameData.diagnostics.startup.backends.detector.provider === 'webgpu' ? 'GPU' : 'CPU'} ／ 角度 {frameData.diagnostics.startup.backends.estimator.provider === 'webgpu' ? 'GPU' : 'CPU'}
+            </div>
+          )}
           {trackingModel === 'whenet' && inference?.latencyMs != null && (
             <div className="bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
               推論時間: {(inference.latencyMs / 1000).toFixed(2)} 秒

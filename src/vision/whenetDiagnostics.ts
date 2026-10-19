@@ -1,3 +1,4 @@
+import type { BackendPreference, BackendStatus } from './whenetBackend';
 import type { InferencePhase } from './whenetProtocol';
 
 // All durations are measured on their own thread. Never subtract window and worker clocks.
@@ -23,7 +24,9 @@ export interface ModelStartup {
   estimatorMs: number;
   totalMs: number;
   runtimeVersion: string;
-  executionProvider: 'wasm';
+  preference: BackendPreference;
+  backends: { detector: BackendStatus; estimator: BackendStatus };
+  gpu: { vendor: string; architecture: string; description: string } | null;
   numThreads: 1;
 }
 export interface FrameSample {
@@ -73,6 +76,7 @@ export function summarize(samples: FrameSample[], key: TimingKey) {
 }
 export interface Benchmark {
   run: number;
+  startup: ModelStartup | null;
   afterId: number;
   target: number;
   status: 'running' | 'completed' | 'interrupted';
@@ -93,7 +97,7 @@ export function diagnosticReport(diagnostics: WhenetDiagnostics, benchmark: Benc
   const nav = navigator as Navigator & { deviceMemory?: number };
   const samples = benchmark ? benchmark.samples : diagnostics.samples.filter(s => s.id !== diagnostics.firstSample?.id);
   return {
-    schemaVersion: 1, exportedAt: new Date().toISOString(),
+    schemaVersion: 2, exportedAt: new Date().toISOString(),
     environment: { userAgent: nav.userAgent, hardwareConcurrency: nav.hardwareConcurrency,
       deviceMemoryGB: nav.deviceMemory ?? null, crossOriginIsolated: globalThis.crossOriginIsolated,
       webgpuApiAvailable: 'gpu' in nav, visibilityAtExport: document.visibilityState,
@@ -108,6 +112,6 @@ export function diagnosticReport(diagnostics: WhenetDiagnostics, benchmark: Benc
       'Skipped WHENet stages are null, not zero. Benchmark excludes one warm-up frame.',
       'Startup includes fetching and session creation; it is separate from frame timings.',
       'Animation gaps overlap processing and are not additive stage times.',
-      'WebGPU API availability does not mean GPU execution; current provider is WASM.'],
+      'WebGPU routes use CPU for unsupported operators; consult startup.backends for each model. recoveryMs is runtime CPU reinitialization time.'],
   };
 }

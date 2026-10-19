@@ -4,7 +4,7 @@ import { expandHead, headToAudio, readAngles, rgbaToPlanar, selectHead } from '.
 import { WhenetTracker } from '../src/vision/whenetTracker';
 import type { WhenetRequest, WhenetResponse } from '../src/vision/whenetProtocol';
 
-const startup = { detectorMs: 10, estimatorMs: 20, totalMs: 30, runtimeVersion: 'test', executionProvider: 'wasm' as const, numThreads: 1 as const };
+const startup = { detectorMs: 10, estimatorMs: 20, totalMs: 30, runtimeVersion: 'test', preference: 'auto' as const, gpu: null, backends: { detector: { provider: 'wasm' as const, fallbackReason: null, recoveryMs: 0 }, estimator: { provider: 'wasm' as const, fallbackReason: null, recoveryMs: 0 } }, numThreads: 1 as const };
 const timings = { frameUploadMs: 1, headPreprocessMs: 1, headInferenceMs: 10, headPostprocessMs: 1,
   posePreprocessMs: 1, poseInferenceMs: 20, posePostprocessMs: 1, workerOtherMs: 0 };
 const box = { x: 0.4, y: 0.4, width: 0.2, height: 0.2, score: 0.9 };
@@ -322,4 +322,21 @@ test('visibility changes are retained even when no animation callback runs while
   const sample = t.processFrame(now).diagnostics!.samples[0];
   assert.equal(sample.hiddenDuringFrame, true);
   assert.equal(sample.maxAnimationGapMs, 900);
+});
+
+test('backend preference reaches the worker and runtime fallback starts a new diagnostic group', async () => {
+  const t = new WhenetTracker('wasm'); trackers.push(t);
+  const loading = t.initModel(); const w = WorkerMock.instances.at(-1)!;
+  assert.equal((w.messages[0] as Extract<WhenetRequest, { type: 'init' }>).backend, 'wasm');
+  w.emit({ type: 'ready', startup }); await loading;
+  Object.assign(t, { videoElement: { readyState: 2, currentTime: 0, videoWidth: 640, videoHeight: 480 } });
+  const before = t.processFrame(0).diagnostics!;
+  w.emit({ type: 'backend', startup: { ...startup, backends: { ...startup.backends,
+    estimator: { provider: 'wasm', fallbackReason: 'device lost', recoveryMs: 100 } } } });
+  const after = t.processFrame(0).diagnostics!;
+  assert.equal(after.run, before.run + 1);
+  assert.equal(after.pending?.id, before.pending?.id);
+  assert.equal(after.startup?.backends.estimator.fallbackReason, 'device lost');
+  w.emit({ type: 'result', timings, id: frame(w).id, pose, elapsedMs: 100 });
+  assert.equal(t.processFrame(0).diagnostics?.samples.length, 1);
 });

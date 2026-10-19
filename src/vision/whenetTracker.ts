@@ -1,4 +1,5 @@
 import { PoseTracker, type PoseFrameData, type PoseTrackerConfig } from './poseTracker';
+import type { BackendPreference } from './whenetBackend';
 import { completeTimings, emptyDiagnostics, recordSample, type WhenetDiagnostics } from './whenetDiagnostics';
 import { coordinates, headToAudio } from './whenetMath';
 import type { InferencePhase, WhenetRequest, WhenetResponse } from './whenetProtocol';
@@ -42,7 +43,7 @@ export class WhenetTracker extends PoseTracker {
   private observeVisibility = () => {
     if (this.pending && document.visibilityState === 'hidden') this.hiddenDuringFrame = true;
   };
-  constructor() {
+  constructor(private backend: BackendPreference = 'auto') {
     super();
     document.addEventListener?.('visibilitychange', this.observeVisibility);
   }
@@ -78,6 +79,11 @@ export class WhenetTracker extends PoseTracker {
           if (this.worker !== worker || this.disposed) return;
           const message = event.data;
           if (message.type === 'error') { this.fail(message.message); return; }
+          if (message.type === 'backend') {
+            // Invalidate benchmark grouping when a model changes backend mid-run.
+            this.diagnostics = { ...emptyDiagnostics(this.diagnostics.run + 1, message.startup), pending: this.diagnostics.pending };
+            return;
+          }
           if (message.type === 'ready') {
             this.clearTimer();
             this.ready = true;
@@ -134,8 +140,8 @@ export class WhenetTracker extends PoseTracker {
             clockHour, clockDirectionText: `${clockHour}時方向 / ${Math.round(azimuth)}°`, fps,
             inference: { phase: 'tracking', latencyMs } };
         };
-        this.timer = setTimeout(() => this.fail('モデル読み込みがタイムアウトしました。通信状況を確認して再試行してください'), 60_000);
-        this.send({ type: 'init', baseUrl: new URL((import.meta.env?.BASE_URL ?? '/'), document.baseURI).href });
+        this.timer = setTimeout(() => this.fail('モデルの取得・初期化がタイムアウトしました。CPU 固定で再試行するか、通信状況を確認してください'), 60_000);
+        this.send({ type: 'init', backend: this.backend, baseUrl: new URL((import.meta.env?.BASE_URL ?? '/'), document.baseURI).href });
       } catch (error) {
         this.fail(error instanceof Error ? error.message : String(error));
       }

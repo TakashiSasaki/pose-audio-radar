@@ -21,6 +21,7 @@ export function WhenetDiagnosticsPanel({ diagnostics, active }: { diagnostics?: 
     return () => clearInterval(timer);
   }, [active]);
   const recent = useMemo(() => diagnostics?.samples.filter(s => s.id !== diagnostics.firstSample?.id) ?? [], [diagnostics?.samples, diagnostics?.firstSample]);
+  const shownStartup = benchmark ? benchmark.startup : diagnostics?.startup;
   const samples = benchmark ? benchmark.samples : recent;
   const latest = benchmark ? samples.at(-1) : diagnostics?.samples.at(-1);
   const stats = useMemo(() => Object.fromEntries(keys.map(key => [key, summarize(samples, key)])) as Record<TimingKey, ReturnType<typeof summarize>>, [samples]);
@@ -32,7 +33,7 @@ export function WhenetDiagnosticsPanel({ diagnostics, active }: { diagnostics?: 
   const start = () => {
     if (!diagnostics) return;
     // Ignore the already in-flight frame: every measured frame starts after the button press.
-    setBenchmark({ run: diagnostics.run, afterId: pending?.id ?? diagnostics.samples.at(-1)?.id ?? 0,
+    setBenchmark({ run: diagnostics.run, startup: diagnostics.startup, afterId: pending?.id ?? diagnostics.samples.at(-1)?.id ?? 0,
       target, status: 'running', warmup: null, samples: [] });
   };
   const save = () => {
@@ -79,8 +80,20 @@ export function WhenetDiagnosticsPanel({ diagnostics, active }: { diagnostics?: 
       </div>
       {largest && <p>平均時間が最大の工程：<strong className="text-amber-300">{timingLabels[largest]}</strong>。原因を断定する表示ではありません。</p>}
       <p>慣らし／初回：{formatMs((benchmark ? benchmark.warmup : diagnostics?.firstSample)?.timings.totalMs)} ms ／ 描画コールバックの最大間隔：{samples.length ? formatMs(Math.max(...samples.map(s => s.maxAnimationGapMs))) : '—'} ms</p>
-      {diagnostics?.startup && <p>モデル準備（取得＋初期化）：頭部検出 {formatMs(diagnostics.startup.detectorMs)} ms ／ WHENet {formatMs(diagnostics.startup.estimatorMs)} ms<br />
-        ONNX Runtime {diagnostics.startup.runtimeVersion} ／ {diagnostics.startup.executionProvider.toUpperCase()} ／ {diagnostics.startup.numThreads} スレッド（GPU は使用していません）</p>}
+      {shownStartup && <p>集計対象のモデル準備（取得＋初期化＋GPU 試行）：頭部検出 {formatMs(shownStartup.detectorMs)} ms ／ WHENet {formatMs(shownStartup.estimatorMs)} ms<br />
+        ONNX Runtime {shownStartup.runtimeVersion} ／ CPU 部分は {shownStartup.numThreads} スレッド</p>}
+      {shownStartup && <div className="space-y-1">
+        <p>設定：{shownStartup.preference === 'auto' ? 'GPU 優先' : 'CPU 固定'}</p>
+        {(['detector', 'estimator'] as const).map(key => {
+          const backend = shownStartup!.backends[key];
+          return <p key={key}>{key === 'detector' ? '頭部検出' : 'WHENet'}：{backend.provider === 'webgpu' ? 'WebGPU（未対応演算は CPU）' : 'CPU / WASM'}
+            {backend.fallbackReason && <span className="block text-amber-300 break-words">CPU を使用する理由：{backend.fallbackReason}</span>}
+            {backend.recoveryMs > 0 && <span className="block">CPU への切替処理：{formatMs(backend.recoveryMs)} ms</span>}
+          </p>;
+        })}
+        {shownStartup.gpu && <p>GPU 情報：{Object.values(shownStartup.gpu).filter(Boolean).join(' / ') || 'ブラウザから提供されていません'}</p>}
+        <p className="text-slate-400">実行途中で CPU に切り替わると、異なる条件を混ぜないようベンチマークを中断します。</p>
+      </div>}
       {latest && <p>入力解像度：カメラ {latest.sourceSize.join('×')} → 転送 {latest.inputSize.join('×')} → 頭部検出 320×256 ／ WHENet 224×224</p>}
       <p className="text-slate-400">モデル実行はテンソルの作成・出力回収を含みます。「受け渡し・待機」は全体から取得と Worker 処理を引いた差分です。描画間隔は他の時間と重なるため合計には加えません。モデル準備と初回は通常の平均から分けています。</p>
       <p className="text-slate-400">JSON には計測値・ブラウザ情報・実行設定を保存します。映像・音声・頭部座標は含みません。</p>
