@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { PoseFrameData } from '../vision/poseTracker';
 
 interface CameraCanvasProps {
+  trackingModel?: 'mediapipe' | 'whenet';
   videoRef: React.RefObject<HTMLVideoElement | null>;
   frameData: PoseFrameData | null;
   mirrorMode: boolean;
@@ -15,6 +16,7 @@ interface CameraCanvasProps {
 }
 
 export const CameraCanvas: React.FC<CameraCanvasProps> = ({
+  trackingModel = 'mediapipe',
   videoRef,
   frameData,
   mirrorMode,
@@ -68,6 +70,13 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
         ctx.font = '13px ui-sans-serif, system-ui';
         ctx.textAlign = 'center';
         ctx.fillText('カメラが停止中または待機中', width / 2, height / 2);
+      }
+
+      if (isCameraActive && frameData?.hasPose && frameData.headBox) {
+        const box = frameData.headBox;
+        ctx.strokeStyle = '#a78bfa';
+        ctx.lineWidth = 3;
+        ctx.strokeRect((mirrorMode ? 1 - box.x - box.width : box.x) * width, box.y * height, box.width * width, box.height * height);
       }
 
       // Draw Pose Landmarks Overlay
@@ -191,7 +200,7 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
               frameData?.hasPose ? 'bg-emerald-500' : isCameraActive ? 'bg-amber-500' : 'bg-rose-500'
             }`}
           />
-          <span className="text-xs font-semibold text-slate-300 tracking-wider">CAMERA / POSE SKELETON</span>
+          <span className="text-xs font-semibold text-slate-300 tracking-wider">{trackingModel === 'whenet' ? 'CAMERA / HEAD POSE' : 'CAMERA / POSE SKELETON'}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -229,7 +238,7 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
           </div>
           {frameData?.hasPose && (
             <div className="bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-[11px] font-mono text-emerald-400 border border-slate-800">
-              CONF: {(frameData.confidence * 100).toFixed(0)}%
+              {trackingModel === 'whenet' ? 'HEAD DET' : 'CONF'}: {(frameData.confidence * 100).toFixed(0)}%
             </div>
           )}
         </div>
@@ -242,7 +251,7 @@ export const CameraCanvas: React.FC<CameraCanvasProps> = ({
       </div>
 
       <div className="w-full mt-3 pt-3 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
-        <span>骨格検出: 鼻(0) · 両耳(7,8) · 両肩(11,12)</span>
+        <span>{trackingModel === 'whenet' ? '紫枠: 検出した頭部 / HEAD DET: 頭部検出の信頼度' : '骨格検出: 鼻(0) · 両耳(7,8) · 両肩(11,12)'}</span>
         <span className="font-mono text-slate-400 text-[11px]">
           {facingMode === 'user' ? '前面カメラ入力' : '背面カメラ入力'}
         </span>

@@ -1,0 +1,23 @@
+WHENet head tracking: third-party model and runtime notices
+
+WHENet: https://github.com/Ascend-Research/HeadPoseEstimation-WHENet
+Copyright (c) 2020 Huawei Technologies Co., Ltd.
+BSD 3-Clause; see WHENet.txt in this directory.
+
+ONNX conversion: https://github.com/PINTO0309/HeadPoseEstimation-WHENet-yolov4-onnx-openvino
+Model: v1.0.4/whenet_1x3x224x224_prepost.onnx
+BSD 3-Clause; see WHENet-conversion.txt (retained upstream notice).
+
+Head detector: https://github.com/PINTO0309/PINTO_model_zoo/tree/main/426_YOLOX-Body-Head-Hand
+Model: yolox_n_body_head_hand_post_0461_0.4428_1x3x256x320.onnx
+Copyright 2023 Katsuya Hyodo
+Apache-2.0; see YOLOX-head.txt.
+Uses the head class of the body/head/hand model without changing model weights.
+
+ONNX Runtime Web 1.30.0: https://github.com/microsoft/onnxruntime
+Copyright (c) Microsoft Corporation. All rights reserved.
+MIT; see onnxruntime.txt.
+
+All models run locally in the browser. Camera frames are not sent to a server.
+The application adds preprocessing, crop selection, and conversion of the
+estimated head rotation to a listener-relative camera direction.

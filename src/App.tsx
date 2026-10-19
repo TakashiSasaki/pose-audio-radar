@@ -32,12 +32,14 @@ import {
   type DistanceMode,
   type PoseFrameData,
 } from './vision/poseTracker';
+import { WhenetTracker } from './vision/whenetTracker';
 import { RadarCanvas } from './components/RadarCanvas';
 import { CameraCanvas } from './components/CameraCanvas';
 
 const SETTINGS_STORAGE_KEY = 'spatial_radar_controls_settings_v1';
 
 interface StoredSettings {
+  trackingModel?: 'mediapipe' | 'whenet';
   panningMode?: PanningMode;
   soundType?: SoundType;
   trackingMode?: TrackingMode;
@@ -88,8 +90,11 @@ export default function App() {
       : 'HRTF'
   );
   const [soundType, setSoundType] = useState<SoundType>(initialSettings.soundType ?? 'pulsed_noise');
+  const [trackingModel, setTrackingModel] = useState<'mediapipe' | 'whenet'>(initialSettings.trackingModel === 'whenet' ? 'whenet' : 'mediapipe');
   const [trackingMode, setTrackingMode] = useState<TrackingMode>(initialSettings.trackingMode ?? 'head');
   const [distanceMode, setDistanceMode] = useState<DistanceMode>(initialSettings.distanceMode ?? 'fixed');
+  const effectiveTrackingMode = trackingModel === 'whenet' ? 'head' : trackingMode;
+  const effectiveDistanceMode = trackingModel === 'whenet' ? 'fixed' : distanceMode;
   const [mirrorMode, setMirrorMode] = useState<boolean>(initialSettings.mirrorMode ?? false);
   const [bpm, setBpm] = useState<number>(initialSettings.bpm ?? 120);
   const [volume, setVolume] = useState<number>(initialSettings.volume ?? 0.7);
@@ -127,6 +132,7 @@ export default function App() {
     try {
       const dataToSave: StoredSettings = {
         panningMode,
+        trackingModel,
         soundType,
         trackingMode,
         distanceMode,
@@ -146,6 +152,7 @@ export default function App() {
       console.warn('Failed to save settings to localStorage:', e);
     }
   }, [
+    trackingModel,
     panningMode,
     soundType,
     trackingMode,
@@ -165,14 +172,20 @@ export default function App() {
   // Initialize Engines on mount
   useEffect(() => {
     audioRef.current = new SpatialAudioEngine();
-    trackerRef.current = new PoseTracker();
 
     return () => {
       cameraOperationRef.current++;
-      if (trackerRef.current) trackerRef.current.destroy();
       if (audioRef.current) audioRef.current.destroy();
     };
   }, []);
+
+  useEffect(() => {
+    const tracker = trackingModel === 'whenet' ? new WhenetTracker() : new PoseTracker();
+    trackerRef.current = tracker;
+    setFrameData(null);
+    setErrorMsg(null);
+    return () => { cameraOperationRef.current++; tracker.destroy(); };
+  }, [trackingModel]);
 
   // Sync Audio Settings
   useEffect(() => {
@@ -336,13 +349,13 @@ export default function App() {
   useEffect(() => {
     if (trackerRef.current) {
       trackerRef.current.updateConfig({
-        trackingMode,
-        distanceMode,
+        trackingMode: effectiveTrackingMode,
+        distanceMode: effectiveDistanceMode,
         mirrorMode,
         smoothingAlpha,
       });
     }
-  }, [trackingMode, distanceMode, mirrorMode, smoothingAlpha]);
+  }, [trackingModel, effectiveTrackingMode, effectiveDistanceMode, mirrorMode, smoothingAlpha]);
 
   // Main Processing Loop
   useEffect(() => {
@@ -351,6 +364,15 @@ export default function App() {
     const loop = (timestamp: number) => {
       if (isRunning && trackerRef.current && audioRef.current) {
         const data = trackerRef.current.processFrame(timestamp);
+        if (data.errorMessage) {
+          cameraOperationRef.current++;
+          trackerRef.current.stopCamera();
+          audioRef.current.stop();
+          setIsRunning(false);
+          setFrameData(null);
+          setErrorMsg(`頭部推定に失敗しました: ${data.errorMessage}`);
+          return;
+        }
         setFrameData(data);
 
         // Update Spatial Audio
@@ -387,7 +409,7 @@ export default function App() {
         await initializeAudio();
         if (operation !== cameraOperationRef.current) return;
 
-        // 2. MediaPipe model init
+        // 2. Selected tracking model init
         if (!trackerRef.current.getIsReady()) {
           await trackerRef.current.initModel();
         }
@@ -398,6 +420,7 @@ export default function App() {
         if (!started || operation !== cameraOperationRef.current) return;
 
         // 4. Start sound synthesis
+        audioRef.current.setTrackingLost(true);
         audioRef.current.start();
         setIsRunning(true);
       } catch (err: unknown) {
@@ -408,7 +431,7 @@ export default function App() {
         setFrameData(null);
         const message = err instanceof Error ? err.message : String(err);
         console.error('Initialization error:', err);
-        setErrorMsg(`起動に失敗しました: ${message}。カメラとマイク・音声の許可をご確認ください。`);
+        setErrorMsg(`起動に失敗しました: ${message}。通信状況・カメラの許可を確認して再試行してください。`);
       } finally {
         if (operation === cameraOperationRef.current) setIsInitializing(false);
       }
@@ -457,7 +480,7 @@ export default function App() {
                   3D Pose Audio Radar
                 </h1>
                 <span className="hidden sm:inline-block text-[11px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                  MediaPipe × HRTF
+                  {trackingModel === 'whenet' ? 'WHENet' : 'MediaPipe'} × HRTF
                 </span>
               </div>
             </div>
@@ -582,7 +605,7 @@ export default function App() {
               clockHour={frameData?.clockHour ?? 12}
               panningMode={panningMode}
               onTogglePanningMode={() => setPanningMode(panningMode === 'HRTF' ? 'equalpower' : 'HRTF')}
-              shoulderAngleDeg={frameData?.shoulderAngleDeg}
+              shoulderAngleDeg={trackingModel === 'whenet' ? null : frameData?.shoulderAngleDeg}
               headAngleDeg={frameData?.headAngleDeg}
               isSweepEnabled={isSweepActive}
             />
@@ -590,6 +613,7 @@ export default function App() {
 
           {/* Camera Feed & Skeletal Wireframe (Only shown in Camera tab on mobile, always visible on desktop) */}
           <CameraCanvas
+            trackingModel={trackingModel}
             videoRef={videoRef}
             frameData={frameData}
             mirrorMode={mirrorMode}
@@ -733,22 +757,40 @@ export default function App() {
               </span>
             </div>
 
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="tracking-model" className="text-slate-400 font-medium">姿勢検出モデル</label>
+              <select id="tracking-model" value={trackingModel}
+                disabled={isRunning || isInitializing || isSwitchingCamera}
+                onChange={(e) => setTrackingModel(e.target.value as 'mediapipe' | 'whenet')}
+                className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2 text-xs disabled:opacity-50">
+                <option value="mediapipe">MediaPipe（骨格検出）</option>
+                <option value="whenet">WHENet（頭部専用・実験）</option>
+              </select>
+              <span className="text-[11px] text-slate-500">
+                {trackingModel === 'whenet'
+                  ? '頭部を自動検出し、最大の頭を追跡します。1人でお試しください。初回はモデル等を約35 MB読み込みます。頭部の向き・固定距離2.5mに対応。'
+                  : '鼻・耳・肩の骨格から向きを推定します。'}
+                モデルの切替は停止中に行えます。
+              </span>
+            </div>
+
             {/* 3. Reference Mode */}
             <div className="flex flex-col gap-1.5">
               <label className="text-slate-400 font-medium">角度算出の基準モード</label>
               <select
-                value={trackingMode}
+                value={effectiveTrackingMode}
+                disabled={trackingModel === 'whenet'}
                 onChange={(e) => setTrackingMode(e.target.value as TrackingMode)}
                 className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-sky-500"
               >
-                <option value="head">顔（耳・鼻）のみ [デフォルト・高感度]</option>
+                <option value="head">{trackingModel === 'whenet' ? '頭部の向き（WHENet）' : '顔（耳・鼻）のみ [デフォルト・高感度]'}</option>
                 <option value="hybrid">肩＋耳の複合360度</option>
                 <option value="shoulder">肩のみ (360度基準)</option>
               </select>
               <span className="text-[11px] text-slate-500">
-                {trackingMode === 'head' && '顔・首振りに鋭敏に反応し、最もダイレクトに向きが変化します'}
-                {trackingMode === 'hybrid' && '肩の360度安定性と頭部ひねりの追従性を両立'}
-                {trackingMode === 'shoulder' && '両肩の向きのみを360度方位角の基準にします'}
+                {effectiveTrackingMode === 'head' && (trackingModel === 'whenet' ? '頭部画像から左右・上下の向きと傾きを推定します' : '顔・首振りに鋭敏に反応し、最もダイレクトに向きが変化します')}
+                {effectiveTrackingMode === 'hybrid' && '肩の360度安定性と頭部ひねりの追従性を両立'}
+                {effectiveTrackingMode === 'shoulder' && '両肩の向きのみを360度方位角の基準にします'}
               </span>
             </div>
 
@@ -849,8 +891,8 @@ export default function App() {
               <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-lg border border-slate-800">
                 <button
                   onClick={() => setDistanceMode('fixed')}
-                  className={`py-1.5 font-medium rounded transition text-xs ${
-                    distanceMode === 'fixed'
+                  className={`py-1.5 font-medium rounded transition text-xs disabled:opacity-40 disabled:cursor-not-allowed ${
+                    effectiveDistanceMode === 'fixed'
                       ? 'bg-sky-600 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
@@ -859,8 +901,9 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => setDistanceMode('dynamic')}
-                  className={`py-1.5 font-medium rounded transition text-xs ${
-                    distanceMode === 'dynamic'
+                  disabled={trackingModel === 'whenet'}
+                  className={`py-1.5 font-medium rounded transition text-xs disabled:opacity-40 disabled:cursor-not-allowed ${
+                    effectiveDistanceMode === 'dynamic'
                       ? 'bg-slate-700 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
@@ -1022,10 +1065,19 @@ export default function App() {
                 <div className="flex items-center gap-3">
                   <Headphones className="w-5 h-5 text-sky-400 shrink-0" />
                   <span>
-                    <strong>ステレオイヤホンまたはヘッドフォン</strong>を装着後、「カメラ起動 ＆ 音声再生」をクリックしてください。ジャイロなしでカメラの骨格推定のみで360度音像定位を行います。
+                    <strong>ステレオイヤホンまたはヘッドフォン</strong>を装着後、「カメラ起動 ＆ 音声再生」をクリックしてください。ジャイロなしでカメラ映像から向きを推定し、360度音像定位を行います。
                   </span>
                 </div>
               </div>
+
+              {trackingModel === 'whenet' && (
+                <p className="p-3 bg-violet-950/30 rounded-lg border border-violet-800/50">
+                  WHENet は頭部専用の実験モードです。紫色の枠が頭全体を囲む位置で、1人で試してください。
+                  肩を映す必要はありません。距離は2.5m固定です。HEAD DET は頭部検出の信頼度で、角度の精度を表す値ではありません。
+                  正面・左右・後ろ向きで音の方向を確かめてください。
+                  <a href={`${import.meta.env.BASE_URL}licenses/whenet/NOTICE.txt`} target="_blank" rel="noreferrer" className="ml-1 text-sky-400 underline">モデルの出典・ライセンス</a>
+                </p>
+              )}
 
               <div className="p-3 bg-slate-950 rounded-lg border border-slate-800">
                 <div className="font-bold text-sky-400 mb-1 flex items-center gap-1.5">
