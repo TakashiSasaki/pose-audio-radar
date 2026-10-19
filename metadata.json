@@ -1,0 +1,6 @@
+{
+  "name": "3D Pose Audio Radar",
+  "description": "360-degree spatial audio radar using MediaPipe Pose 3D skeletal tracking and Web Audio API HRTF to perceive camera position purely by sound.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

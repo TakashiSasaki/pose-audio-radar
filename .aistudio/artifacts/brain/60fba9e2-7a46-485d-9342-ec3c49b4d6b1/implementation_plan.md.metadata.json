@@ -1,0 +1,6 @@
+{
+  "summary": "180度反対方向からの動的音響スウィープ提示機能の実装計画を作成しました。設定でのON/OFF切替、ビートごとのWeb Audio PannerNode座標ランプ遷移、レーダーキャンバス上での軌道ベクトルの視覚表示を含みます。",
+  "updatedAt": "2026-10-19T05:22:24.979764900Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
