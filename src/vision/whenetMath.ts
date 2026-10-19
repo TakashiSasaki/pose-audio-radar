@@ -59,6 +59,8 @@ export function headToAudio(pose: HeadPose, distance: number, mirror: boolean): 
   const rad = Math.PI / 180;
   const y = -pose.yaw * rad, p = pose.pitch * rad, r = pose.roll * rad;
   const cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p), cr = Math.cos(r), sr = Math.sin(r);
+  // Camera direction in the raw image basis. For a front-facing head, image-right
+  // is listener-left; the x negation below converts that basis after inverse rotation.
   const vx = (0.5 - pose.box.x - pose.box.width / 2) * 2 * Math.tan(30 * rad);
   const vy = (0.5 - pose.box.y - pose.box.height / 2) * 2 * Math.tan(22.5 * rad);
   let x = -(cy * cr * vx + (cp * sr + cr * sp * sy) * vy + sp * sr - cp * cr * sy);

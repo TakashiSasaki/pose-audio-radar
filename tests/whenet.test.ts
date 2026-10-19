@@ -49,6 +49,25 @@ test('head rotation maps front, side, back, pitch and mirror into listener coord
   c = headToAudio({ ...pose, yaw: 70, roll: 40, pitch: -20 }, 2.5, false); near(c.distance, 2.5);
 });
 
+test('off-center head projection recovers the camera on the listener’s actual side', () => {
+  // Listener faces -Z. A parallel camera looking back at them has image-right = listener-left.
+  // Project known camera positions into the raw, unmirrored image independently of headToAudio.
+  const depth = 2.5;
+  for (const cameraX of [-.5, .5]) {
+    const centerX = .5 + cameraX / (2 * depth * Math.tan(Math.PI / 6));
+    const translated = { ...pose, box: { ...box, x: centerX - box.width / 2 } };
+    const expectedScale = depth / Math.hypot(cameraX, depth);
+    const normal = headToAudio(translated, depth, false);
+    near(normal.x, cameraX * expectedScale);
+    near(normal.y, 0);
+    near(normal.z, -depth * expectedScale);
+    const mirrored = headToAudio(translated, depth, true);
+    near(mirrored.x, -normal.x);
+    near(mirrored.y, normal.y);
+    near(mirrored.z, normal.z);
+  }
+});
+
 class WorkerMock {
   static instances: WorkerMock[] = [];
   onmessage: ((event: { data: WhenetResponse }) => void) | null = null;

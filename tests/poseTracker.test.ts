@@ -139,6 +139,28 @@ test('shoulder angle is invariant to image scale in shoulder and hybrid modes', 
   }
 });
 
+test('image translation uses the front-facing listener’s left/right in every reference mode', () => {
+  for (const mode of ['head', 'shoulder', 'hybrid'] as const) {
+    for (const centerX of [.25, .75]) {
+      for (const mirrorMode of [false, true]) {
+        const { tracker, detect } = detectionTracker(mode);
+        tracker.updateConfig({ mirrorMode });
+        const translated = landmarks();
+        for (const point of translated.landmarks[0]) point.x += centerX - .5;
+        // The head and shoulders face the camera; translation must not change orientation.
+        translated.worldLandmarks[0][11].z = 0;
+        translated.worldLandmarks[0][12].z = 0;
+        const frame = detect(translated, 100);
+        const expectedAzimuth = (centerX === .25 ? -15 : 15) * (mirrorMode ? -1 : 1);
+        assert.equal(frame.hasPose, true);
+        assert.equal(frame.headAngleDeg, 0);
+        assert.equal(frame.shoulderAngleDeg, 0);
+        assert.ok(Math.abs(frame.coords.azimuthDeg - expectedAzimuth) < 1e-6);
+      }
+    }
+  }
+});
+
 test('low head visibility rejects tracking and preserves the last position', () => {
   const { detect } = detectionTracker('head');
   const good = detect(landmarks(), 100);

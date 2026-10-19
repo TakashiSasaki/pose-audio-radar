@@ -318,8 +318,9 @@ export class PoseTracker {
     // FOVx is roughly 60 degrees (1.047 radians)
     const FOV_X = (60 * Math.PI) / 180;
     const headCenterX = hasReliableHead ? (nose.x + earMidX) / 2 : (leftShoulder2D.x + rightShoulder2D.x) / 2;
-    // Normalized screen center is 0.5. If user is at left (headCenterX < 0.5), camera is to user's right
-    const offsetAngleRad = (0.5 - headCenterX) * FOV_X;
+    // In the raw, unmirrored image, a front-facing head on image-left has the camera
+    // on the listener's left. Convert image displacement to listener-relative azimuth.
+    const offsetAngleRad = (headCenterX - 0.5) * FOV_X;
 
     // Combined Azimuth theta
     let totalAzimuthRad = baseAngleRad + offsetAngleRad;
