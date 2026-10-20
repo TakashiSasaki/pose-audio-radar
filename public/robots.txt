@@ -1,0 +1,8 @@
+# Robots.txt for 3D Pose Audio Radar
+# Allow search engines and crawlers full access to index the site
+
+User-agent: *
+Allow: /
+
+# Sitemap definition for search engines
+Sitemap: https://pose-audio-radar.moukaeritai.work/sitemap.xml

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://pose-audio-radar.moukaeritai.work/</loc>
+    <xhtml:link rel="canonical" href="https://pose-audio-radar.moukaeritai.work/" />
+    <xhtml:link rel="alternate" href="https://pose-audio-radar.ai.studio" />
+    <lastmod>2026-10-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://pose-audio-radar.moukaeritai.work/og-image.png</image:loc>
+      <image:title>3D Pose Audio Radar - 360° HRTF Spatial Audio</image:title>
+      <image:caption>360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーション</image:caption>
+    </image:image>
+  </url>
+</urlset>

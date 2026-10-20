@@ -1,11 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>3D Pose Audio Radar - 360° HRTF Spatial Audio</title>
     <meta name="description" content="360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーション。" />
+    <meta name="keywords" content="3D Pose Audio Radar, 立体音響, 空間オーディオ, HRTF, MediaPipe, WHENet, 頭部姿勢推定, 骨格追跡, Web Audio API, WebAssembly, PWA, バイノーラル" />
+    <meta name="author" content="Takashi Sasaki" />
     <meta name="theme-color" content="#020617" />
+
+    <!-- Search Engine & Crawler Directives -->
+    <link rel="canonical" href="https://pose-audio-radar.moukaeritai.work/" />
+    <link rel="alternate" href="https://pose-audio-radar.ai.studio" />
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
 
     <!-- OpenGraph (Facebook, Slack, Discord, LinkedIn) -->
     <meta property="og:type" content="website" />
@@ -36,30 +45,83 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="AudioRadar" />
 
-    <!-- Schema.org JSON-LD -->
+    <!-- Schema.org JSON-LD (Search Crawlers & Rich Snippets) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "3D Pose Audio Radar",
-      "url": "https://pose-audio-radar.moukaeritai.work/",
-      "description": "360-degree spatial audio radar using MediaPipe Pose 3D skeletal tracking and WHENet head pose estimation with Web Audio API HRTF to perceive camera position purely by sound.",
-      "applicationCategory": "MultimediaApplication",
-      "operatingSystem": "All",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
-      "author": {
-        "@type": "Person",
-        "name": "Takashi Sasaki",
-        "url": "https://x.com/TakashiSasaki"
-      }
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://pose-audio-radar.moukaeritai.work/#website",
+          "url": "https://pose-audio-radar.moukaeritai.work/",
+          "name": "3D Pose Audio Radar",
+          "sameAs": [
+            "https://pose-audio-radar.ai.studio"
+          ],
+          "description": "360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーション。",
+          "inLanguage": ["ja", "en"],
+          "publisher": {
+            "@type": "Person",
+            "name": "Takashi Sasaki",
+            "url": "https://x.com/TakashiSasaki"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "@id": "https://pose-audio-radar.moukaeritai.work/#app",
+          "name": "3D Pose Audio Radar",
+          "url": "https://pose-audio-radar.moukaeritai.work/",
+          "sameAs": [
+            "https://pose-audio-radar.ai.studio"
+          ],
+          "applicationCategory": "MultimediaApplication",
+          "operatingSystem": "All",
+          "browserRequirements": "Requires WebRTC Camera access and Web Audio API support",
+          "description": "360-degree spatial audio radar using MediaPipe Pose 3D skeletal tracking and WHENet head pose estimation with Web Audio API HRTF to perceive camera position purely by sound.",
+          "featureList": [
+            "360-degree HRTF 3D binaural spatial audio synthesis",
+            "MediaPipe Pose 3D skeletal landmark tracking",
+            "WHENet deep neural network head pose estimation with ONNX Runtime Web",
+            "Real-time circular radar visualization with yaw, pitch, and roll indicators",
+            "Audio sweep and headphone L/R channel testing",
+            "Progressive Web App (PWA) offline support"
+          ],
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "author": {
+            "@type": "Person",
+            "name": "Takashi Sasaki",
+            "url": "https://x.com/TakashiSasaki"
+          }
+        }
+      ]
     }
     </script>
   </head>
   <body>
+    <!-- Semantic crawler content for bots without JS execution -->
+    <noscript>
+      <div style="padding: 2rem; max-width: 800px; margin: 0 auto; font-family: system-ui, -apple-system, sans-serif; color: #f1f5f9; background: #020617; line-height: 1.6;">
+        <h1>3D Pose Audio Radar - 360° HRTF Spatial Audio</h1>
+        <p>
+          360°立体音響空間レーダー。MediaPipe Pose 3D骨格 ＆ WHENet頭部姿勢推定 × Web Audio HRTF により、音だけでカメラ位置を知覚するWebアプリケーションです。
+        </p>
+        <h2>主な特徴 (Key Features)</h2>
+        <ul>
+          <li><strong>360° HRTF 立体音響:</strong> Web Audio API の PannerNode (HRTF モデル) を用いて、頭部の向きに応じたリアルな3次元バイノーラル音響を生成。</li>
+          <li><strong>MediaPipe Pose 3D 骨格追跡:</strong> カメラ映像からリアルタイムで首や顔、体の3次元ランドマークを検出。</li>
+          <li><strong>WHENet 頭部姿勢推定:</strong> ONNX Runtime Web を使用したディープニューラルネットワークによる高精度なヨー・ピッチ・ロール角推定。</li>
+          <li><strong>リアルタイム空間レーダー表示:</strong> 頭部中心の相対座標系でカメラの位置・仰角・距離をグラフィカルに可視化。</li>
+          <li><strong>PWA (Progressive Web App) 対応:</strong> スマートフォンやPCにインストールしてネイティブアプリ感覚で起動可能。</li>
+        </ul>
+        <h2>推奨環境</h2>
+        <p>カメラおよびヘッドホン・イヤホンの装着が推奨されます。本アプリを利用するにはJavaScriptを有効にしてください。</p>
+      </div>
+    </noscript>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

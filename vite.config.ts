@@ -15,7 +15,15 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.png', 'apple-touch-icon.png', 'icon.svg', 'og-image.png'],
+        includeAssets: [
+          'favicon.png',
+          'apple-touch-icon.png',
+          'icon.svg',
+          'og-image.png',
+          'robots.txt',
+          'sitemap.xml',
+          'google686f6b490a533df7.html',
+        ],
         manifest: {
           id: '/',
           name: '3D Pose Audio Radar',
