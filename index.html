@@ -12,9 +12,16 @@
     <!-- Search Engine & Crawler Directives -->
     <link rel="canonical" href="https://pose-audio-radar.moukaeritai.work/" />
     <link rel="alternate" href="https://pose-audio-radar.ai.studio" />
+    <link rel="alternate" hreflang="ja" href="https://pose-audio-radar.moukaeritai.work/" />
+    <link rel="alternate" hreflang="en" href="https://pose-audio-radar.moukaeritai.work/" />
+    <link rel="alternate" hreflang="x-default" href="https://pose-audio-radar.moukaeritai.work/" />
     <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+
+    <!-- Resource Preconnect & Performance Hints -->
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 
     <!-- OpenGraph (Facebook, Slack, Discord, LinkedIn) -->
     <meta property="og:type" content="website" />
@@ -96,6 +103,36 @@
             "name": "Takashi Sasaki",
             "url": "https://x.com/TakashiSasaki"
           }
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://pose-audio-radar.moukaeritai.work/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "3D Pose Audio Radar とは何ですか？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "カメラ映像から人物の3D骨格ランドマークおよび頭部の姿勢（ヨー・ピッチ・ロール角）をリアルタイム推定し、Web Audio APIのHRTF立体音響で音のみによりカメラとの相対位置・方位を知覚できるようにするWebアプリケーションです。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "利用するのに特別なハードウェアや外部サーバーが必要ですか？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "いいえ、一般的なカメラ付きPCやスマートフォンのブラウザと、市販のステレオヘッドホン・イヤホンがあれば動作します。モデルの推定およびオーディオ処理はすべてクライアントサイド（ブラウザ内）で実行されるため、映像が外部に送信されることはありません。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "対応ブラウザと環境について教えてください。",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "WebRTC（カメラアクセス）および Web Audio API（HRTF PannerNode）に対応した Google Chrome, Apple Safari, Microsoft Edge, Mozilla Firefox などの最新ブラウザでご利用いただけます。"
+              }
+            }
+          ]
         }
       ]
     }
@@ -117,6 +154,13 @@
           <li><strong>リアルタイム空間レーダー表示:</strong> 頭部中心の相対座標系でカメラの位置・仰角・距離をグラフィカルに可視化。</li>
           <li><strong>PWA (Progressive Web App) 対応:</strong> スマートフォンやPCにインストールしてネイティブアプリ感覚で起動可能。</li>
         </ul>
+        <h2>よくある質問 (FAQ)</h2>
+        <dl>
+          <dt><strong>Q. 利用に特別な機器が必要ですか？</strong></dt>
+          <dd>一般的なWebカメラ付きデバイスと市販のステレオヘッドホン・イヤホンのみで動作します。</dd>
+          <dt><strong>Q. カメラ映像はサーバーに送信されますか？</strong></dt>
+          <dd>送信されません。すべての画像解析と音声合成処理はブラウザ内で完結するため安全です。</dd>
+        </dl>
         <h2>推奨環境</h2>
         <p>カメラおよびヘッドホン・イヤホンの装着が推奨されます。本アプリを利用するにはJavaScriptを有効にしてください。</p>
       </div>
